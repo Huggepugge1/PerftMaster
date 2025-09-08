@@ -3,7 +3,7 @@ use vampirc_uci::{UciMove, UciPiece, UciSquare};
 use crate::board::{Bitmap, Board, CastleKind, PieceKind, Square};
 
 #[derive(Clone, Copy, Debug)]
-pub struct Move(Square);
+pub struct Move(pub Square);
 
 impl std::ops::BitOr<Square> for Move {
     type Output = Self;
@@ -36,7 +36,7 @@ impl std::ops::Shr<i64> for Move {
 }
 
 fn ucisquare_to_square(square: UciSquare) -> Square {
-    (square.file as Square - 'a' as Square) - ((square.rank - 1) * 8) as Square
+    (square.file as Square - 'a' as Square) + ((square.rank - 1) * 8) as Square
 }
 
 impl Move {
@@ -52,12 +52,34 @@ impl Move {
         ((self.0 >> 6) & 0b111111) as Square
     }
 
+    // Flags:
+    // 0b0000: Quiet Move
+    // 0b0001: Double Pawn Push
+    // 0b0010: King Castle
+    // 0b0011: Queen Castle
+    // 0b0100: Capture
+    // 0b0101: En passant
+    // 0b1000: Rook Promotion
+    // 0b1001: Knight Promotion
+    // 0b1010: Bishop Promotion
+    // 0b1011: Queen Promotion
+    // 0b1100: Rook Promotion and Capture
+    // 0b1101: Knight Promotion and Capture
+    // 0b1110: Bishop Promotion and Capture
+    // 0b1111: Queen Promotion and Capture
+    //
+    // 0b0100: Capture
+    // 0b1000: Promotion
     pub fn flags(&self) -> Square {
         (self.0 >> 12) as Square
     }
 
     pub fn is_capture(&self) -> bool {
         self.flags() & 0b0100 > 0
+    }
+
+    pub fn is_en_passant(&self) -> bool {
+        self.flags() == 0b0101
     }
 
     pub fn is_promotion(&self) -> bool {
@@ -99,9 +121,11 @@ impl Move {
 
     pub fn from_ucimove(board: &Board, m: UciMove) -> Self {
         let from = ucisquare_to_square(m.from);
+        println!("{} -> {}", m.from, from);
         let to = ucisquare_to_square(m.to);
+        println!("{} -> {}", m.to, to);
 
-        let result = Move(from | (to << 6));
+        let result = Move::new(from, to, 0);
 
         board.annotate_move(
             result,

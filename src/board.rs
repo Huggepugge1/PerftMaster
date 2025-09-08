@@ -121,6 +121,8 @@ impl Board {
     }
 
     fn load_fen(&mut self, fen: String) {
+        self.clean_board();
+
         let mut parts = fen.split(" ");
         let pieces = parts.next().unwrap();
         let turn = parts.next().unwrap();
@@ -192,49 +194,33 @@ impl Board {
         self.full_move_clock = fullmove_clock.parse().unwrap();
     }
 
-    // Flags:
-    // 0b0000: Quiet Move
-    // 0b0001: Double Pawn Push
-    // 0b0010: King Castle
-    // 0b0011: Queen Castle
-    // 0b0100: Capture
-    // 0b0101: En passant
-    // 0b1000: Rook Promotion
-    // 0b1001: Knight Promotion
-    // 0b1010: Bishop Promotion
-    // 0b1011: Queen Promotion
-    // 0b1100: Rook Promotion and Capture
-    // 0b1101: Knight Promotion and Capture
-    // 0b1110: Bishop Promotion and Capture
-    // 0b1111: Queen Promotion and Capture
-    //
-    // 0b0100: Capture
-    // 0b1000: Promotion
     pub fn annotate_move(&self, m: Move, promotion: PieceKind) -> Move {
         let mut flags = 0;
-        let from_piece = self.get_piece(m.from());
-        let to_piece = self.get_piece(m.to());
+        let from = m.from();
+        let to = m.to();
+        let from_piece = self.get_piece(from);
+        let to_piece = self.get_piece(to);
 
         match from_piece.kind {
             PieceKind::Pawn => {
-                if Square::abs(m.to() - m.from()) == 16 {
+                if Square::abs(to - from) == 16 {
                     flags = 0b0001;
                 }
-                if Square::abs(m.to() - m.from()) % 2 == 1 && to_piece.kind == PieceKind::None {
+                if Square::abs(to - from) % 2 == 1 && to_piece.kind == PieceKind::None {
                     flags = 0b0101;
                 }
             }
             PieceKind::King => {
-                if m.to() - m.from() == 2 {
+                if to - from == 2 {
                     flags = 2;
-                } else if m.to() - m.from() == -2 {
+                } else if to - from == -2 {
                     flags = 3;
                 }
             }
             _ => (),
         }
 
-        if from_piece.kind != PieceKind::None {
+        if to_piece.kind != PieceKind::None {
             flags |= 0b0100;
         }
 
@@ -266,7 +252,7 @@ impl Board {
         self.move_piece(from_piece, m);
 
         // Capture
-        if m.is_capture() {
+        if m.is_capture() && !m.is_en_passant() {
             let to_piece = self.get_piece(to);
             irreversible_aspects.capture = to_piece;
             self.toggle_piece(to_piece, to);
@@ -274,8 +260,8 @@ impl Board {
             // If a rook is captured, remove castling_rights
             if to_piece.kind == PieceKind::Rook {
                 match to {
-                    00 => self.castling_rights &= 0b1011,
-                    07 => self.castling_rights &= 0b0111,
+                    0 => self.castling_rights &= 0b1011,
+                    7 => self.castling_rights &= 0b0111,
                     56 => self.castling_rights &= 0b1101,
                     63 => self.castling_rights &= 0b1110,
                     _ => (),
@@ -283,7 +269,7 @@ impl Board {
             }
 
         // En passant
-        } else if to == self.ep && from_piece.kind == PieceKind::Pawn {
+        } else if m.is_en_passant() {
             let ep_piece = self.get_piece(self.ep);
             irreversible_aspects.capture = ep_piece;
             self.toggle_piece(ep_piece, self.ep);
@@ -317,8 +303,8 @@ impl Board {
         // Rook moves
         if from_piece.kind == PieceKind::Rook {
             match from {
-                00 => self.castling_rights &= 0b1011,
-                07 => self.castling_rights &= 0b0111,
+                0 => self.castling_rights &= 0b1011,
+                7 => self.castling_rights &= 0b0111,
                 56 => self.castling_rights &= 0b1101,
                 63 => self.castling_rights &= 0b1110,
                 _ => (),
@@ -434,7 +420,7 @@ impl Board {
         piece
     }
 
-    pub fn print_board(&self) {
+    pub fn print(&self) {
         println!(" --- --- --- --- --- --- --- ---");
         for i in 0..8 {
             print!("|");
@@ -444,9 +430,21 @@ impl Board {
                     piece_to_ascii(self.get_piece(63 - ((i * 8) + (7 - j))))
                 );
             }
-            println!("");
+            println!();
             println!(" --- --- --- --- --- --- --- ---");
         }
+    }
+
+    fn clean_board(&mut self) {
+        self.white_pieces = 0;
+        self.black_pieces = 0;
+
+        self.pawns = 0;
+        self.rooks = 0;
+        self.knights = 0;
+        self.bishops = 0;
+        self.queens = 0;
+        self.kings = 0;
     }
 }
 

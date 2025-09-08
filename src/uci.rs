@@ -42,6 +42,7 @@ pub fn run() {
                     moves,
                 } => {
                     board.load_position(startpos, fen, moves);
+                    board.print();
                 }
 
                 UciMessage::Stop => {

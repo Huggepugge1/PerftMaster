@@ -1,0 +1,436 @@
+use vampirc_uci::{UciFen, uci::UciMove};
+
+use crate::r#move::Move;
+
+pub type Bitmap = u64;
+pub type Square = i16;
+
+pub trait ToSquare {
+    fn to_square(self) -> Square;
+}
+
+impl ToSquare for String {
+    fn to_square(self) -> Square {
+        (self.chars().nth(0).unwrap() as Square - 'a' as Square)
+            + (self.chars().nth(1).unwrap() as Square - '1' as Square) * 8
+    }
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
+pub enum PieceKind {
+    Pawn,
+    Rook,
+    Knight,
+    Bishop,
+    Queen,
+    King,
+    #[default]
+    None,
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
+pub enum Color {
+    White,
+    Black,
+    #[default]
+    None,
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
+pub struct Piece {
+    color: Color,
+    kind: PieceKind,
+}
+
+impl Piece {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+pub enum CastleKind {
+    KingSide,
+    QueenSide,
+    None,
+}
+
+#[derive(Default)]
+pub struct IrreversibleAspects {
+    capture: Piece,
+    half_move_clock: u16,
+    ep: Square,
+    castling_rights: u8,
+}
+
+#[derive(Default)]
+pub struct Board {
+    pub white_pieces: Bitmap,
+    pub black_pieces: Bitmap,
+
+    pub pawns: Bitmap,
+    pub rooks: Bitmap,
+    pub knights: Bitmap,
+    pub bishops: Bitmap,
+    pub queens: Bitmap,
+    pub kings: Bitmap,
+
+    pub ep: Square,
+    pub half_move_clock: u16,
+    pub full_move_clock: u16,
+
+    // White King | White Queen | Black King | Black Queen
+    pub castling_rights: u8,
+    pub turn: Color,
+
+    pub game_stack: Vec<IrreversibleAspects>,
+}
+
+impl Board {
+    pub fn new() -> Board {
+        Board::default()
+    }
+
+    pub fn new_game(&mut self) {}
+
+    pub fn load_position(&mut self, startpos: bool, fen: Option<UciFen>, moves: Vec<UciMove>) {
+        if startpos {
+            self.load_startpos();
+        } else {
+            match fen {
+                Some(UciFen(fen)) => self.load_fen(fen),
+                None => unreachable!(),
+            }
+        }
+
+        for ucimove in moves {
+            let m = Move::from_ucimove(self, ucimove);
+            self.make_move(m);
+        }
+    }
+
+    fn load_startpos(&mut self) {
+        self.white_pieces = 0xffff;
+        self.black_pieces = 0xffff << 48;
+
+        self.pawns = 0xff00 | (0x00ff << 48);
+        self.rooks = 0x0081 | (0x8100 << 48);
+        self.knights = 0x0042 | (0x4200 << 48);
+        self.bishops = 0x0024 | (0x2400 << 48);
+        self.queens = 0x0008 | (0x0800 << 48);
+        self.kings = 0x0010 | (0x1000 << 48);
+    }
+
+    fn load_fen(&mut self, fen: String) {
+        let mut parts = fen.split(" ");
+        let pieces = parts.next().unwrap();
+        let turn = parts.next().unwrap();
+        let castling = parts.next().unwrap();
+        let en_passant = parts.next().unwrap();
+        let halfmove_clock = parts.next().unwrap();
+        let fullmove_clock = parts.next().unwrap();
+        let mut pos: Square = 56;
+
+        for piece in pieces.chars() {
+            if piece == '/' {
+                continue;
+            } else if piece.is_ascii_digit() {
+                pos += piece as Square - '0' as Square;
+            } else {
+                if piece.is_uppercase() {
+                    self.white_pieces |= 1 << pos;
+                    match piece {
+                        'P' => self.pawns |= 1 << pos,
+                        'R' => self.rooks |= 1 << pos,
+                        'N' => self.knights |= 1 << pos,
+                        'B' => self.bishops |= 1 << pos,
+                        'Q' => self.queens |= 1 << pos,
+                        'K' => self.kings |= 1 << pos,
+                        _ => (),
+                    }
+                } else {
+                    self.black_pieces |= 1 << pos;
+                    match piece {
+                        'p' => self.pawns |= 1 << pos,
+                        'r' => self.rooks |= 1 << pos,
+                        'n' => self.knights |= 1 << pos,
+                        'b' => self.bishops |= 1 << pos,
+                        'q' => self.queens |= 1 << pos,
+                        'k' => self.kings |= 1 << pos,
+                        _ => (),
+                    }
+                }
+                pos += 1;
+            }
+            if pos > 8 && pos % 8 == 0 {
+                pos -= 16;
+            }
+        }
+
+        match turn {
+            "w" => self.turn = Color::White,
+            "b" => self.turn = Color::Black,
+            _ => panic!("Fen needs a turn!"),
+        }
+
+        for castling_right in castling.chars() {
+            match castling_right {
+                'K' => self.castling_rights |= 0b0001,
+                'Q' => self.castling_rights |= 0b0010,
+                'k' => self.castling_rights |= 0b0101,
+                'q' => self.castling_rights |= 0b0110,
+                _ => (),
+            }
+        }
+
+        if en_passant != "-" {
+            self.ep = en_passant.to_string().to_square();
+        } else {
+            self.ep = -1;
+        }
+
+        self.half_move_clock = halfmove_clock.parse().unwrap();
+        self.full_move_clock = fullmove_clock.parse().unwrap();
+    }
+
+    // Flags:
+    // 0b0000: Quiet Move
+    // 0b0001: Double Pawn Push
+    // 0b0010: King Castle
+    // 0b0011: Queen Castle
+    // 0b0100: Capture
+    // 0b0101: En passant
+    // 0b1000: Rook Promotion
+    // 0b1001: Knight Promotion
+    // 0b1010: Bishop Promotion
+    // 0b1011: Queen Promotion
+    // 0b1100: Rook Promotion and Capture
+    // 0b1101: Knight Promotion and Capture
+    // 0b1110: Bishop Promotion and Capture
+    // 0b1111: Queen Promotion and Capture
+    //
+    // 0b0100: Capture
+    // 0b1000: Promotion
+    pub fn annotate_move(&self, m: Move, promotion: PieceKind) -> Move {
+        let mut flags = 0;
+        let from_piece = self.get_piece(m.from());
+        let to_piece = self.get_piece(m.to());
+
+        match from_piece.kind {
+            PieceKind::Pawn => {
+                if Square::abs(m.to() - m.from()) == 16 {
+                    flags = 0b0001;
+                }
+                if Square::abs(m.to() - m.from()) % 2 == 1 && to_piece.kind == PieceKind::None {
+                    flags = 0b0101;
+                }
+            }
+            PieceKind::King => {
+                if m.to() - m.from() == 2 {
+                    flags = 2;
+                } else if m.to() - m.from() == -2 {
+                    flags = 3;
+                }
+            }
+            _ => (),
+        }
+
+        if from_piece.kind != PieceKind::None {
+            flags |= 0b0100;
+        }
+
+        if promotion != PieceKind::None {
+            match promotion {
+                PieceKind::Rook => flags |= 0b1000,
+                PieceKind::Knight => flags |= 0b1001,
+                PieceKind::Bishop => flags |= 0b1010,
+                PieceKind::Queen => flags |= 0b1011,
+                _ => unreachable!(),
+            }
+        }
+        m | (flags << 12)
+    }
+
+    fn make_move(&mut self, m: Move) {
+        let mut irreversible_aspects = IrreversibleAspects {
+            capture: Piece::new(),
+            ep: self.ep,
+            half_move_clock: self.half_move_clock,
+            castling_rights: self.castling_rights,
+        };
+
+        let from = m.from();
+        let to = m.to();
+
+        let from_piece = self.get_piece(from);
+
+        self.move_piece(from_piece, m);
+
+        // Capture
+        if m.is_capture() {
+            let to_piece = self.get_piece(to);
+            irreversible_aspects.capture = to_piece;
+            self.toggle_piece(to_piece, to);
+
+            // If a rook is captured, remove castling_rights
+            if to_piece.kind == PieceKind::Rook {
+                match to {
+                    00 => self.castling_rights &= 0b1011,
+                    07 => self.castling_rights &= 0b0111,
+                    56 => self.castling_rights &= 0b1101,
+                    63 => self.castling_rights &= 0b1110,
+                    _ => (),
+                }
+            }
+
+        // En passant
+        } else if to == self.ep && from_piece.kind == PieceKind::Pawn {
+            let ep_piece = self.get_piece(self.ep);
+            irreversible_aspects.capture = ep_piece;
+            self.toggle_piece(ep_piece, self.ep);
+        }
+
+        // Promotion
+        if m.is_promotion() {
+            let promotion = m.promotion();
+            self.toggle_promotion(promotion, to);
+        }
+
+        // Castling
+        if m.is_castle() {
+            self.toggle_castle(m, from);
+            match self.turn {
+                Color::White => self.castling_rights &= 0b0011,
+                Color::Black => self.castling_rights &= 0b1100,
+                Color::None => unreachable!(),
+            }
+        }
+
+        // King moves
+        if from_piece.kind == PieceKind::King {
+            match self.turn {
+                Color::White => self.castling_rights &= 0b0011,
+                Color::Black => self.castling_rights &= 0b1100,
+                Color::None => unreachable!(),
+            }
+        }
+
+        // Rook moves
+        if from_piece.kind == PieceKind::Rook {
+            match from {
+                00 => self.castling_rights &= 0b1011,
+                07 => self.castling_rights &= 0b0111,
+                56 => self.castling_rights &= 0b1101,
+                63 => self.castling_rights &= 0b1110,
+                _ => (),
+            }
+        }
+
+        self.game_stack.push(irreversible_aspects);
+        self.change_turn();
+    }
+
+    fn move_piece(&mut self, piece: Piece, m: Move) {
+        let bitmap = m.bitmap();
+        match piece.color {
+            Color::White => self.white_pieces ^= bitmap,
+            Color::Black => self.black_pieces ^= bitmap,
+            Color::None => unreachable!(),
+        }
+
+        match piece.kind {
+            PieceKind::Pawn => self.pawns ^= bitmap,
+            PieceKind::Rook => self.rooks ^= bitmap,
+            PieceKind::Knight => self.knights ^= bitmap,
+            PieceKind::Bishop => self.bishops ^= bitmap,
+            PieceKind::Queen => self.queens ^= bitmap,
+            PieceKind::King => self.kings ^= bitmap,
+            PieceKind::None => unreachable!(),
+        }
+    }
+
+    fn toggle_piece(&mut self, piece: Piece, square: Square) {
+        let bitmap = 1 << square;
+        match piece.color {
+            Color::White => self.white_pieces ^= bitmap,
+            Color::Black => self.black_pieces ^= bitmap,
+            Color::None => unreachable!(),
+        }
+
+        match piece.kind {
+            PieceKind::Pawn => self.pawns ^= bitmap,
+            PieceKind::Rook => self.rooks ^= bitmap,
+            PieceKind::Knight => self.knights ^= bitmap,
+            PieceKind::Bishop => self.bishops ^= bitmap,
+            PieceKind::Queen => self.queens ^= bitmap,
+            PieceKind::King => self.kings ^= bitmap,
+            PieceKind::None => unreachable!(),
+        }
+    }
+
+    fn toggle_promotion(&mut self, piecekind: PieceKind, square: Square) {
+        let bitmap = 1 << square;
+        self.pawns ^= bitmap;
+
+        match piecekind {
+            PieceKind::Rook => self.rooks ^= bitmap,
+            PieceKind::Knight => self.knights ^= bitmap,
+            PieceKind::Bishop => self.bishops ^= bitmap,
+            PieceKind::Queen => self.queens ^= bitmap,
+            _ => unreachable!(),
+        }
+    }
+
+    fn toggle_castle(&mut self, m: Move, from: i16) {
+        let castle = m.castle();
+        match castle {
+            CastleKind::KingSide => self.move_piece(
+                Piece {
+                    color: self.turn,
+                    kind: PieceKind::Rook,
+                },
+                Move::new(from + 3, from + 1, 0),
+            ),
+            CastleKind::QueenSide => self.move_piece(
+                Piece {
+                    color: self.turn,
+                    kind: PieceKind::Rook,
+                },
+                Move::new(from - 4, from - 1, 0),
+            ),
+            CastleKind::None => unreachable!(),
+        }
+    }
+
+    fn change_turn(&mut self) {
+        if self.turn == Color::White {
+            self.turn = Color::Black;
+        } else {
+            self.turn = Color::White;
+        }
+    }
+
+    fn get_piece(&self, square: Square) -> Piece {
+        let mut piece = Piece::new();
+        if (self.white_pieces & (1 << square)) > 0 {
+            piece.color = Color::White;
+        } else if (self.black_pieces & (1 << square)) > 0 {
+            piece.color = Color::Black;
+        }
+
+        if (self.pawns & (1 << square)) > 0 {
+            piece.kind = PieceKind::Pawn;
+        } else if (self.rooks & (1 << square)) > 0 {
+            piece.kind = PieceKind::Rook;
+        } else if (self.knights & (1 << square)) > 0 {
+            piece.kind = PieceKind::Knight;
+        } else if (self.bishops & (1 << square)) > 0 {
+            piece.kind = PieceKind::Bishop;
+        } else if (self.queens & (1 << square)) > 0 {
+            piece.kind = PieceKind::Queen;
+        } else if (self.kings & (1 << square)) > 0 {
+            piece.kind = PieceKind::King;
+        }
+
+        piece
+    }
+}

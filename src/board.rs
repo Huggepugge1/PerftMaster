@@ -433,4 +433,37 @@ impl Board {
 
         piece
     }
+
+    pub fn print_board(&self) {
+        println!(" --- --- --- --- --- --- --- ---");
+        for i in 0..8 {
+            print!("|");
+            for j in 0..8 {
+                print!(
+                    " {} |",
+                    piece_to_ascii(self.get_piece(63 - ((i * 8) + (7 - j))))
+                );
+            }
+            println!("");
+            println!(" --- --- --- --- --- --- --- ---");
+        }
+    }
+}
+
+pub fn piece_to_ascii(piece: Piece) -> char {
+    let chr: char = match piece.kind {
+        PieceKind::Pawn => 'p',
+        PieceKind::Rook => 'r',
+        PieceKind::Knight => 'n',
+        PieceKind::Bishop => 'b',
+        PieceKind::Queen => 'q',
+        PieceKind::King => 'k',
+        PieceKind::None => '_',
+    };
+
+    match piece.color {
+        Color::White => chr.to_ascii_uppercase(),
+        Color::Black => chr,
+        Color::None => chr,
+    }
 }

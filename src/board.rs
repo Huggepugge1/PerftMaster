@@ -202,6 +202,7 @@ impl Board {
             _ => panic!("Fen needs a turn!"),
         }
 
+        self.castling_rights = 0;
         for castling_right in castling.chars() {
             match castling_right {
                 'K' => self.castling_rights |= 0b1000,

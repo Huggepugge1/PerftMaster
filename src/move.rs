@@ -1,9 +1,30 @@
 use vampirc_uci::{UciMove, UciPiece, UciSquare};
 
-use crate::board::{Bitmap, Board, CastleKind, PieceKind, Square};
+use crate::board::{AsSquare, Bitmap, Board, CastleKind, PieceKind, Square};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Move(pub Square);
+
+impl std::fmt::Display for Move {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let from = self.from();
+        let to = self.to();
+
+        let from_string = from.as_square();
+        let to_string = to.as_square();
+
+        let promote = match self.promotion() {
+            PieceKind::Rook => "r",
+            PieceKind::Knight => "n",
+            PieceKind::Bishop => "b",
+            PieceKind::Queen => "q",
+            PieceKind::None => "",
+            _ => unreachable!(),
+        };
+
+        write!(f, "{}{}{}", from_string, to_string, promote)
+    }
+}
 
 impl std::ops::BitOr<Square> for Move {
     type Output = Self;
@@ -40,6 +61,8 @@ fn ucisquare_to_square(square: UciSquare) -> Square {
 }
 
 impl Move {
+    pub const NULL: Self = Move(-1);
+
     pub fn new(from: Square, to: Square, flags: Square) -> Self {
         Move(from | (to << 6) | (flags << 12))
     }
@@ -82,8 +105,16 @@ impl Move {
         self.flags() == 0b0101
     }
 
+    pub fn is_double_push(&self) -> bool {
+        self.flags() == 0b0001
+    }
+
     pub fn is_promotion(&self) -> bool {
         self.flags() & 0b1000 > 0
+    }
+
+    pub fn is_quiet(&self) -> bool {
+        self.flags() == 0b0000
     }
 
     pub fn promotion(&self) -> PieceKind {
@@ -121,9 +152,7 @@ impl Move {
 
     pub fn from_ucimove(board: &Board, m: UciMove) -> Self {
         let from = ucisquare_to_square(m.from);
-        println!("{} -> {}", m.from, from);
         let to = ucisquare_to_square(m.to);
-        println!("{} -> {}", m.to, to);
 
         let result = Move::new(from, to, 0);
 

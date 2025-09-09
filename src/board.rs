@@ -5,12 +5,24 @@ use crate::r#move::Move;
 pub type Bitmap = u64;
 pub type Square = i16;
 
+pub trait AsSquare {
+    fn as_square(&self) -> String;
+}
+
+impl AsSquare for Square {
+    fn as_square(&self) -> String {
+        let mut string = String::from((b'a' + *self as u8 % 8) as char);
+        string.push((b'1' + *self as u8 / 8) as char);
+        string
+    }
+}
+
 pub trait ToSquare {
-    fn to_square(self) -> Square;
+    fn to_square(&self) -> Square;
 }
 
 impl ToSquare for String {
-    fn to_square(self) -> Square {
+    fn to_square(&self) -> Square {
         (self.chars().nth(0).unwrap() as Square - 'a' as Square)
             + (self.chars().nth(1).unwrap() as Square - '1' as Square) * 8
     }
@@ -34,6 +46,18 @@ pub enum Color {
     Black,
     #[default]
     None,
+}
+
+impl std::ops::Sub<Color> for Square {
+    type Output = Self;
+
+    fn sub(self, rhs: Color) -> Self::Output {
+        match rhs {
+            Color::White => self - 8,
+            Color::Black => self + 8,
+            Color::None => unreachable!(),
+        }
+    }
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq)]
@@ -92,8 +116,10 @@ impl Board {
 
     pub fn new_game(&mut self) {}
 
-    pub fn load_position(&mut self, startpos: bool, fen: Option<UciFen>, moves: Vec<UciMove>) {
-        if startpos {
+    pub fn load_position(&mut self, fen: Option<UciFen>, moves: Vec<UciMove>) {
+        self.clean_board();
+
+        if fen.is_none() {
             self.load_startpos();
         } else {
             match fen {
@@ -118,11 +144,13 @@ impl Board {
         self.bishops = 0x0024 | (0x2400 << 48);
         self.queens = 0x0008 | (0x0800 << 48);
         self.kings = 0x0010 | (0x1000 << 48);
+
+        self.turn = Color::White;
+        self.half_move_clock = 0;
+        self.full_move_clock = 1;
     }
 
     fn load_fen(&mut self, fen: String) {
-        self.clean_board();
-
         let mut parts = fen.split(" ");
         let pieces = parts.next().unwrap();
         let turn = parts.next().unwrap();
@@ -236,7 +264,7 @@ impl Board {
         m | (flags << 12)
     }
 
-    fn make_move(&mut self, m: Move) {
+    pub fn make_move(&mut self, m: Move) {
         let mut irreversible_aspects = IrreversibleAspects {
             capture: Piece::new(),
             ep: self.ep,
@@ -248,8 +276,6 @@ impl Board {
         let to = m.to();
 
         let from_piece = self.get_piece(from);
-
-        self.move_piece(from_piece, m);
 
         // Capture
         if m.is_capture() && !m.is_en_passant() {
@@ -273,6 +299,11 @@ impl Board {
             let ep_piece = self.get_piece(self.ep);
             irreversible_aspects.capture = ep_piece;
             self.toggle_piece(ep_piece, self.ep);
+        }
+        if m.is_double_push() {
+            self.ep = from - self.turn;
+        } else {
+            self.ep = -1;
         }
 
         // Promotion
@@ -311,8 +342,57 @@ impl Board {
             }
         }
 
+        if m.is_quiet() {
+            self.half_move_clock += 1;
+        } else {
+            self.half_move_clock = 0;
+        }
+
+        self.move_piece(from_piece, m);
+        self.change_turn(true);
         self.game_stack.push(irreversible_aspects);
-        self.change_turn();
+    }
+
+    pub fn unmake_move(&mut self, m: Move) {
+        let IrreversibleAspects {
+            capture,
+            ep,
+            half_move_clock,
+            castling_rights,
+        } = self.game_stack.pop().unwrap();
+
+        let m = m.reverse();
+
+        let from = m.from();
+        let to = m.to();
+
+        let from_piece = self.get_piece(from);
+
+        // Capture
+        if m.is_capture() && !m.is_en_passant() {
+            self.toggle_piece(capture, from);
+
+        // En passant
+        } else if m.is_en_passant() {
+            self.toggle_piece(capture, ep);
+        }
+
+        // Promotion
+        if m.is_promotion() {
+            let promotion = m.promotion();
+            self.toggle_promotion(promotion, from);
+        }
+
+        // Castling
+        if m.is_castle() {
+            self.toggle_castle(m, to);
+        }
+
+        self.move_piece(from_piece, m);
+        self.change_turn(false);
+        self.ep = ep;
+        self.half_move_clock = half_move_clock;
+        self.castling_rights = castling_rights;
     }
 
     fn move_piece(&mut self, piece: Piece, m: Move) {
@@ -387,11 +467,17 @@ impl Board {
         }
     }
 
-    fn change_turn(&mut self) {
+    fn change_turn(&mut self, inc: bool) {
         if self.turn == Color::White {
             self.turn = Color::Black;
+            if !inc {
+                self.full_move_clock -= 1;
+            }
         } else {
             self.turn = Color::White;
+            if inc {
+                self.full_move_clock += 1;
+            }
         }
     }
 
@@ -445,6 +531,8 @@ impl Board {
         self.bishops = 0;
         self.queens = 0;
         self.kings = 0;
+
+        self.ep = -1;
     }
 }
 

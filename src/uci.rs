@@ -1,4 +1,4 @@
-use vampirc_uci::parse;
+use vampirc_uci::parse_with_unknown;
 use vampirc_uci::{MessageList, Serializable, UciMessage};
 
 use std::sync::{Arc, RwLock};
@@ -18,7 +18,7 @@ pub fn run() {
         std::io::stdin()
             .read_line(&mut input)
             .expect("Failed reading string");
-        let messages: MessageList = parse(&input);
+        let messages: MessageList = parse_with_unknown(&input);
         for m in messages {
             match m {
                 UciMessage::Uci => {
@@ -36,18 +36,15 @@ pub fn run() {
                 UciMessage::IsReady => println!("{}", UciMessage::ReadyOk.serialize()),
 
                 UciMessage::UciNewGame => board.new_game(),
-                UciMessage::Position {
-                    startpos,
-                    fen,
-                    moves,
-                } => {
-                    board.load_position(startpos, fen, moves);
+                UciMessage::Position { fen, moves, .. } => {
+                    board.load_position(fen, moves);
                     board.print();
                 }
 
                 UciMessage::Stop => {
                     *stopper.write().expect("Failed to stop the search") = Status::Stopping
                 }
+
                 other => eprintln!("Command not implemented: {other}"),
             };
         }

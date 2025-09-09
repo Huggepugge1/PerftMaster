@@ -18,8 +18,12 @@ struct Args {
 enum Command {
     Perft {
         depth: u16,
+
         #[arg(long)]
         fen: Option<String>,
+
+        #[arg(long)]
+        r#move: Option<String>,
     },
 }
 
@@ -27,7 +31,7 @@ fn main() {
     let args = Args::parse();
 
     match args.command {
-        Some(Command::Perft { depth, fen }) => perft::perft_test(depth, fen),
+        Some(Command::Perft { depth, fen, r#move }) => perft::perft_test(depth, fen, r#move),
         None => uci::run(),
     }
 }

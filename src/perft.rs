@@ -12,12 +12,31 @@ struct Position {
     depths: OrderMap<u16, OrderMap<String, usize>>,
 }
 
-pub fn perft_test(max_depth: u16, fen: Option<String>) {
+pub fn perft_test(max_depth: u16, fen: Option<String>, m: Option<String>) {
     let mut board = Board::new();
 
     if let Some(fen) = fen {
         board.load_position(Some(UciFen(fen)), Vec::new());
-        board.perft(max_depth);
+        let perft = board.perft(max_depth);
+        board.print();
+        if let Some(m) = m {
+            let mut found = false;
+            for (perft_move, nodes) in perft {
+                if perft_move == m {
+                    println!("{perft_move}: {nodes}");
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                println!("Missing move: {m}");
+            }
+        } else {
+            for (m, nodes) in perft {
+                println!("{m}: {nodes}");
+            }
+        }
+        return;
     }
 
     let data = fs::read_to_string("./chess-position-generator/perft_dataset.json").unwrap();
@@ -68,7 +87,8 @@ impl Board {
                 self.print();
                 println!("{m}");
                 println!("uci");
-                println!("cargo run -- perft {depth} --fen {fen}");
+                println!("Debug command:");
+                println!("cargo run -- perft {depth} --fen \"{fen}\" --move {m}");
                 panic!();
             }
             if stockfish.get(m).unwrap() != nodes {
@@ -76,7 +96,8 @@ impl Board {
                 self.print();
                 println!("Stockfish: {}: {}", m, stockfish.get(m).unwrap());
                 println!("Me: {m}: {nodes}");
-                println!("cargo run -- perft {depth} --fen {fen}");
+                println!("Debug command:");
+                println!("cargo run -- perft {depth} --fen \"{fen}\" --move {m}");
                 panic!();
             }
         }
@@ -85,7 +106,8 @@ impl Board {
                 println!("Move missing!");
                 self.print();
                 println!("{m}");
-                println!("cargo run -- perft {depth} --fen \"{fen}\"");
+                println!("Debug command:");
+                println!("cargo run -- perft {depth} --fen \"{fen}\" --move {m}");
                 panic!();
             }
             if perft.get(m).unwrap() != nodes {
@@ -93,7 +115,8 @@ impl Board {
                 self.print();
                 println!("Stockfish: {}: {}", m, perft.get(m).unwrap());
                 println!("Me: {m}");
-                println!("cargo run -- perft {depth} --fen {fen}");
+                println!("Debug command:");
+                println!("cargo run -- perft {depth} --fen \"{fen}\" --move {m}");
                 panic!();
             }
         }

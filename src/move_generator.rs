@@ -54,13 +54,18 @@ const NOT_H_FILE: Bitmap = 0x7F7F7F7F7F7F7F7F;
 fn get_ray(mut current: Square, dir: Square) -> Bitmap {
     let mut result = 0;
     current += dir;
-    if (dir % 8) == 1 || dir % 8 == -7 {
+    if dir % 8 == 1 || dir % 8 == -7 {
         while (current + 8) % 8 > 0 && (0..64).contains(&current) {
             result |= 1 << current;
             current += dir;
         }
-    } else {
+    } else if dir % 8 == 7 || dir % 8 == -1 {
         while (current + 8) % 8 < 7 && (0..64).contains(&current) {
+            result |= 1 << current;
+            current += dir;
+        }
+    } else {
+        while (0..64).contains(&current) {
             result |= 1 << current;
             current += dir;
         }

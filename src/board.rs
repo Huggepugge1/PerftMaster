@@ -204,10 +204,10 @@ impl Board {
 
         for castling_right in castling.chars() {
             match castling_right {
-                'K' => self.castling_rights |= 0b0001,
-                'Q' => self.castling_rights |= 0b0010,
-                'k' => self.castling_rights |= 0b0101,
-                'q' => self.castling_rights |= 0b0110,
+                'K' => self.castling_rights |= 0b1000,
+                'Q' => self.castling_rights |= 0b0100,
+                'k' => self.castling_rights |= 0b0010,
+                'q' => self.castling_rights |= 0b0001,
                 _ => (),
             }
         }
@@ -288,8 +288,8 @@ impl Board {
                 match to {
                     0 => self.castling_rights &= 0b1011,
                     7 => self.castling_rights &= 0b0111,
-                    56 => self.castling_rights &= 0b1101,
-                    63 => self.castling_rights &= 0b1110,
+                    56 => self.castling_rights &= 0b1110,
+                    63 => self.castling_rights &= 0b1101,
                     _ => (),
                 }
             }

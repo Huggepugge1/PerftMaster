@@ -1,15 +1,14 @@
 use crate::board::Board;
 
-use ordermap::OrderMap;
 use serde::Deserialize;
 use vampirc_uci::UciFen;
 
-use std::fs;
+use std::{collections::HashMap, fs};
 
 #[derive(Deserialize, Debug)]
 struct Position {
     fen: String,
-    depths: OrderMap<u16, OrderMap<String, usize>>,
+    depths: HashMap<u16, HashMap<String, usize>>,
 }
 
 pub fn perft_test(max_depth: u16, fen: Option<String>, m: Option<String>) {
@@ -56,11 +55,11 @@ pub fn perft_test(max_depth: u16, fen: Option<String>, m: Option<String>) {
 }
 
 impl Board {
-    fn perft(&mut self, depth: u16) -> OrderMap<String, usize> {
+    fn perft(&mut self, depth: u16) -> HashMap<String, usize> {
         if depth == 0 {
-            return OrderMap::from([(String::new(), 1)]);
+            return HashMap::from([(String::new(), 1)]);
         }
-        let mut result = OrderMap::new();
+        let mut result = HashMap::new();
         for m in self.generate_moves() {
             self.make_move(m);
             result.insert(
@@ -76,8 +75,8 @@ impl Board {
 
     fn difference(
         &self,
-        perft: OrderMap<String, usize>,
-        stockfish: OrderMap<String, usize>,
+        perft: HashMap<String, usize>,
+        stockfish: HashMap<String, usize>,
         fen: &str,
         depth: u16,
     ) {
@@ -86,7 +85,6 @@ impl Board {
                 println!("Extra move!");
                 self.print();
                 println!("{m}");
-                println!("uci");
                 println!("Debug command:");
                 println!("cargo run -- perft {depth} --fen \"{fen}\" --move {m}");
                 panic!();

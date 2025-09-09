@@ -48,6 +48,18 @@ pub enum Color {
     None,
 }
 
+impl std::ops::Add<Color> for Square {
+    type Output = Self;
+
+    fn add(self, rhs: Color) -> Self::Output {
+        match rhs {
+            Color::White => self + 8,
+            Color::Black => self - 8,
+            Color::None => unreachable!(),
+        }
+    }
+}
+
 impl std::ops::Sub<Color> for Square {
     type Output = Self;
 
@@ -297,9 +309,9 @@ impl Board {
 
         // En passant
         } else if m.is_en_passant() {
-            let ep_piece = self.get_piece(self.ep);
+            let ep_piece = self.get_piece(self.ep - self.turn);
             irreversible_aspects.capture = ep_piece;
-            self.toggle_piece(ep_piece, self.ep);
+            self.toggle_piece(ep_piece, self.ep - self.turn);
         }
         if m.is_double_push() {
             self.ep = from - self.turn;
@@ -350,7 +362,10 @@ impl Board {
         }
 
         self.move_piece(from_piece, m);
-        self.change_turn(true);
+        self.change_turn();
+        if self.turn == Color::White {
+            self.full_move_clock += 1;
+        }
         self.game_stack.push(irreversible_aspects);
     }
 
@@ -375,7 +390,7 @@ impl Board {
 
         // En passant
         } else if m.is_en_passant() {
-            self.toggle_piece(capture, ep);
+            self.toggle_piece(capture, ep + self.turn);
         }
 
         // Promotion
@@ -390,10 +405,13 @@ impl Board {
         }
 
         self.move_piece(from_piece, m);
-        self.change_turn(false);
+        self.change_turn();
         self.ep = ep;
         self.half_move_clock = half_move_clock;
         self.castling_rights = castling_rights;
+        if self.turn == Color::Black {
+            self.full_move_clock -= 1;
+        }
     }
 
     fn move_piece(&mut self, piece: Piece, m: Move) {
@@ -468,17 +486,11 @@ impl Board {
         }
     }
 
-    fn change_turn(&mut self, inc: bool) {
+    pub fn change_turn(&mut self) {
         if self.turn == Color::White {
             self.turn = Color::Black;
-            if !inc {
-                self.full_move_clock -= 1;
-            }
         } else {
             self.turn = Color::White;
-            if inc {
-                self.full_move_clock += 1;
-            }
         }
     }
 

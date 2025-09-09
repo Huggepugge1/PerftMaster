@@ -67,6 +67,19 @@ impl Move {
         Move(from | (to << 6) | (flags << 12))
     }
 
+    pub fn add_promotion_if_possible(from: Square, to: Square, flags: Square) -> Vec<Self> {
+        if to / 8 == 0 || to / 8 == 7 {
+            vec![
+                Move::new(from, to, flags | 0b1000),
+                Move::new(from, to, flags | 0b1001),
+                Move::new(from, to, flags | 0b1010),
+                Move::new(from, to, flags | 0b1011),
+            ]
+        } else {
+            vec![Move::new(from, to, flags)]
+        }
+    }
+
     pub fn from(&self) -> Square {
         (self.0 & 0b111111) as Square
     }
@@ -119,7 +132,7 @@ impl Move {
 
     pub fn promotion(&self) -> PieceKind {
         let flags = self.flags();
-        match flags & 0x1011 {
+        match flags & 0b1011 {
             0b1000 => PieceKind::Rook,
             0b1001 => PieceKind::Knight,
             0b1010 => PieceKind::Bishop,

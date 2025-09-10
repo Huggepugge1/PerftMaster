@@ -18,21 +18,28 @@ impl Board {
     }
 
     pub fn search(&mut self) -> Move {
-        self.negamax(3).1
+        let (alpha, beta) = (f64::MIN, f64::MAX);
+        self.negamax(5, alpha, beta).1
     }
 
-    fn negamax(&mut self, depth: usize) -> (f64, Move) {
+    fn negamax(&mut self, depth: usize, mut alpha: f64, beta: f64) -> (f64, Move) {
         if depth == 0 {
             return (self.eval(), Move::NULL);
         }
         let mut best = (f64::MIN, Move::NULL);
         for m in self.generate_moves() {
             self.make_move(m);
-            let eval = -self.negamax(depth - 1).0;
+            let score = -self.negamax(depth - 1, -beta, -alpha).0;
             self.unmake_move(m);
-            if eval > best.0 {
-                best.0 = eval;
+            if score > best.0 {
+                best.0 = score;
                 best.1 = m;
+                if score > alpha {
+                    alpha = score;
+                }
+            }
+            if score >= beta {
+                break;
             }
         }
 

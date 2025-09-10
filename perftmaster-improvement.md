@@ -1,11 +1,11 @@
 # Improvement log
 
-## Version 1
+## Version 0.1.0
 Completely random play
 perft-speed: ~5M nodes/s 
 Elo: 0
 
-## Version 2
+## Version 0.2.0
 ### Whats changed
 Implemented simple negamax algorithm with a material evaluation
 Pawn: 100
@@ -19,4 +19,14 @@ Running at depth 3
 
 ### Performance
 perft-speed: ~5M nodes/s (unchanged code)
-Elo: 442.8 +/- 28.3,
+Elo: 442.8 +/- 28.3 (Against random)
+
+## Version 0.3.0
+### Whats changed
+Implemented AB-pruning.
+
+Running at depth 5
+
+### Performance
+perft-speed: ~5M nodes/s (unchanged code)
+Elo: 478.0 +/- 108.4 (Against random)

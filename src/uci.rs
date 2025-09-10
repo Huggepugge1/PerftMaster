@@ -25,7 +25,7 @@ pub fn run() {
                     println!(
                         "{}",
                         UciMessage::Id {
-                            name: Some(String::from("Perftmaster v2")),
+                            name: Some(String::from("Perftmaster v0.3.0")),
                             author: Some(String::from("Hugo Lindström")),
                         }
                         .serialize()

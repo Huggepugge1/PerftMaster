@@ -90,7 +90,7 @@ pub enum CastleKind {
     None,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq)]
 pub struct IrreversibleAspects {
     capture: Piece,
     half_move_clock: u16,
@@ -98,7 +98,7 @@ pub struct IrreversibleAspects {
     castling_rights: u8,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq)]
 pub struct Board {
     pub white_pieces: Bitmap,
     pub black_pieces: Bitmap,
@@ -314,7 +314,7 @@ impl Board {
             self.toggle_piece(ep_piece, self.ep - self.turn);
         }
         if m.is_double_push() {
-            self.ep = from - self.turn;
+            self.ep = to - self.turn;
         } else {
             self.ep = -1;
         }
@@ -349,8 +349,8 @@ impl Board {
             match from {
                 0 => self.castling_rights &= 0b1011,
                 7 => self.castling_rights &= 0b0111,
-                56 => self.castling_rights &= 0b1101,
-                63 => self.castling_rights &= 0b1110,
+                56 => self.castling_rights &= 0b1110,
+                63 => self.castling_rights &= 0b1101,
                 _ => (),
             }
         }
@@ -370,6 +370,7 @@ impl Board {
     }
 
     pub fn unmake_move(&mut self, m: Move) {
+        self.change_turn();
         let IrreversibleAspects {
             capture,
             ep,
@@ -382,6 +383,12 @@ impl Board {
         let from = m.from();
         let to = m.to();
 
+        // Promotion
+        if m.is_promotion() {
+            let promotion = m.promotion();
+            self.toggle_promotion(promotion, from);
+        }
+
         let from_piece = self.get_piece(from);
 
         // Capture
@@ -390,13 +397,7 @@ impl Board {
 
         // En passant
         } else if m.is_en_passant() {
-            self.toggle_piece(capture, ep + self.turn);
-        }
-
-        // Promotion
-        if m.is_promotion() {
-            let promotion = m.promotion();
-            self.toggle_promotion(promotion, from);
+            self.toggle_piece(capture, ep - self.turn);
         }
 
         // Castling
@@ -405,7 +406,6 @@ impl Board {
         }
 
         self.move_piece(from_piece, m);
-        self.change_turn();
         self.ep = ep;
         self.half_move_clock = half_move_clock;
         self.castling_rights = castling_rights;

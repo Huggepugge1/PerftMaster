@@ -158,11 +158,16 @@ impl Board {
                 if (1 << (from + 7)) & (1 << self.ep) & NOT_H_FILE > 0 {
                     moves.push(Move::new(from, from + 7, 0b0101));
                 }
-                if (1 << (from + 9)) & (1 << self.ep) & NOT_A_FILE > 0 {
+                if Bitmap::checked_shl(1, (from + 9) as u32).unwrap_or(0)
+                    & (1 << self.ep)
+                    & NOT_A_FILE
+                    > 0
+                {
                     moves.push(Move::new(from, from + 9, 0b0101));
                 }
             }
         }
+
         moves
     }
 
@@ -183,7 +188,11 @@ impl Board {
             if (1 << (from - 7)) & self.white_pieces & NOT_A_FILE > 0 {
                 moves.append(&mut Move::add_promotion_if_possible(from, from - 7, 0b0100));
             }
-            if (1 << (from - 9)) & self.white_pieces & NOT_H_FILE > 0 {
+            if Bitmap::checked_shl(1, (from - 9) as u32).unwrap_or(0)
+                & self.white_pieces
+                & NOT_H_FILE
+                > 0
+            {
                 moves.append(&mut Move::add_promotion_if_possible(from, from - 9, 0b0100));
             }
             if from / 8 == 6 && ((1 << (from - 8)) | (1 << (from - 16))) & blockers == 0 {
@@ -193,7 +202,11 @@ impl Board {
                 if (1 << (from - 7)) & (1 << (self.ep)) & NOT_A_FILE > 0 {
                     moves.push(Move::new(from, from - 7, 0b0101));
                 }
-                if (1 << (from - 9)) & (1 << self.ep) & NOT_H_FILE > 0 {
+                if Bitmap::checked_shl(1, (from - 9) as u32).unwrap_or(0)
+                    & (1 << self.ep)
+                    & NOT_H_FILE
+                    > 0
+                {
                     moves.push(Move::new(from, from - 9, 0b0101));
                 }
             }
@@ -430,6 +443,7 @@ impl Board {
             }
             Color::None => unreachable!(),
         }
+
         self.change_turn();
 
         moves

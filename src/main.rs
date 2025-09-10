@@ -21,9 +21,6 @@ enum Command {
 
         #[arg(long)]
         fen: Option<String>,
-
-        #[arg(long)]
-        r#move: Option<String>,
     },
 }
 
@@ -31,7 +28,7 @@ fn main() {
     let args = Args::parse();
 
     match args.command {
-        Some(Command::Perft { depth, fen, r#move }) => perft::perft_test(depth, fen, r#move),
+        Some(Command::Perft { depth, fen }) => perft::perft_test(depth, fen),
         None => uci::run(),
     }
 }

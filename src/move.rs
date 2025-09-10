@@ -1,9 +1,15 @@
 use vampirc_uci::{UciMove, UciPiece, UciSquare};
 
-use crate::board::{AsSquare, Bitmap, Board, CastleKind, PieceKind, Square};
+use crate::board::{AsSquare, Bitmap, Board, CastleKind, PieceKind, Square, ToSquare};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Move(pub Square);
+
+impl Default for Move {
+    fn default() -> Self {
+        Move::NULL
+    }
+}
 
 impl std::fmt::Display for Move {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -182,5 +188,24 @@ impl Move {
                 None => PieceKind::None,
             },
         )
+    }
+
+    pub fn from_string_move(m: &str) -> Self {
+        let from = m[0..2].to_string().to_square();
+        let to = m[2..4].to_string().to_square();
+
+        let mut flags = 0;
+
+        if m.len() == 5 {
+            match m.chars().nth(4).unwrap() {
+                'r' => flags = 0b1000,
+                'n' => flags = 0b1001,
+                'b' => flags = 0b1010,
+                'q' => flags = 0b1011,
+                _ => unreachable!(),
+            }
+        }
+
+        Move::new(from, to, flags)
     }
 }

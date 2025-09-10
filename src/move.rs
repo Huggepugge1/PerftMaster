@@ -190,6 +190,27 @@ impl Move {
         )
     }
 
+    pub fn as_ucimove(&self) -> UciMove {
+        UciMove {
+            from: UciSquare {
+                file: ('a' as u8 + (self.from() % 8) as u8) as char,
+                rank: (self.from() / 8) as u8 + 1,
+            },
+            to: UciSquare {
+                file: ('a' as u8 + (self.to() % 8) as u8) as char,
+                rank: (self.to() / 8) as u8 + 1,
+            },
+            promotion: match self.promotion() {
+                PieceKind::Rook => Some(UciPiece::Rook),
+                PieceKind::Knight => Some(UciPiece::Knight),
+                PieceKind::Bishop => Some(UciPiece::Bishop),
+                PieceKind::Queen => Some(UciPiece::Queen),
+                PieceKind::None => None,
+                _ => unreachable!(),
+            },
+        }
+    }
+
     pub fn from_string_move(m: &str) -> Self {
         let from = m[0..2].to_string().to_square();
         let to = m[2..4].to_string().to_square();

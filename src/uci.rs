@@ -35,6 +35,14 @@ pub fn run() {
 
                 UciMessage::IsReady => println!("{}", UciMessage::ReadyOk.serialize()),
 
+                UciMessage::Go { .. } => println!(
+                    "{}",
+                    UciMessage::BestMove {
+                        best_move: board.search().as_ucimove(),
+                        ponder: None,
+                    }
+                ),
+
                 UciMessage::UciNewGame => board.new_game(),
                 UciMessage::Position { fen, moves, .. } => {
                     board.load_position(fen, moves);

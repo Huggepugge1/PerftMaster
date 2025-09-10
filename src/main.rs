@@ -2,6 +2,7 @@ mod board;
 mod r#move;
 mod move_generator;
 mod perft;
+mod search;
 mod uci;
 
 use clap::{Parser, Subcommand};

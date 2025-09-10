@@ -82,6 +82,22 @@ impl Piece {
     pub fn new() -> Self {
         Self::default()
     }
+
+    pub fn score(self) -> f64 {
+        (match self.kind {
+            PieceKind::Pawn => 100f64,
+            PieceKind::Rook => 500f64,
+            PieceKind::Knight => 300f64,
+            PieceKind::Bishop => 300f64,
+            PieceKind::Queen => 900f64,
+            PieceKind::King => 100000f64,
+            PieceKind::None => 0f64,
+        }) * match self.color {
+            Color::White => 1f64,
+            Color::Black => -1f64,
+            Color::None => 0f64,
+        }
+    }
 }
 
 pub enum CastleKind {
@@ -494,7 +510,7 @@ impl Board {
         }
     }
 
-    fn get_piece(&self, square: Square) -> Piece {
+    pub fn get_piece(&self, square: Square) -> Piece {
         let mut piece = Piece::new();
         if (self.white_pieces & (1 << square)) > 0 {
             piece.color = Color::White;

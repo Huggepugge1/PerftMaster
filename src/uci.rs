@@ -2,11 +2,15 @@ use vampirc_uci::parse_with_unknown;
 use vampirc_uci::{MessageList, Serializable, UciMessage};
 
 use std::sync::{Arc, RwLock};
+use std::thread;
 
 use crate::board::Board;
+use crate::search::Search;
 
+#[derive(PartialEq)]
 pub enum Status {
     Idle,
+    Go,
     Stopping,
 }
 
@@ -25,7 +29,7 @@ pub fn run() {
                     println!(
                         "{}",
                         UciMessage::Id {
-                            name: Some(String::from("Perftmaster v0.3.0")),
+                            name: Some(String::from("Perftmaster v0.4.0")),
                             author: Some(String::from("Hugo Lindström")),
                         }
                         .serialize()
@@ -35,23 +39,35 @@ pub fn run() {
 
                 UciMessage::IsReady => println!("{}", UciMessage::ReadyOk.serialize()),
 
-                UciMessage::Go { .. } => println!(
-                    "{}",
-                    UciMessage::BestMove {
-                        best_move: board.search().as_ucimove(),
-                        ponder: None,
-                    }
-                ),
+                UciMessage::Go { time_control, .. } => {
+                    *stopper.write().expect("Failed to start the search") = Status::Go;
+                    let mut board = board.clone();
+                    let stopper = stopper.clone();
+                    thread::spawn(move || {
+                        println!(
+                            "{}",
+                            UciMessage::BestMove {
+                                best_move: Search::search(
+                                    &mut board,
+                                    time_control,
+                                    stopper.clone()
+                                )
+                                .as_ucimove(),
+                                ponder: None,
+                            }
+                        );
+                        *stopper.write().expect("Failed to start the search") = Status::Idle;
+                    });
+                }
 
                 UciMessage::UciNewGame => board.new_game(),
-                UciMessage::Position { fen, moves, .. } => {
-                    board.load_position(fen, moves);
-                    board.print();
-                }
+                UciMessage::Position { fen, moves, .. } => board.load_position(fen, moves),
 
                 UciMessage::Stop => {
                     *stopper.write().expect("Failed to stop the search") = Status::Stopping
                 }
+
+                UciMessage::Quit => return,
 
                 other => eprintln!("Command not implemented: {other}"),
             };

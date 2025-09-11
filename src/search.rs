@@ -1,39 +1,311 @@
+use std::{
+    cmp::Ordering,
+    sync::{Arc, RwLock},
+    thread::{self, sleep},
+    time::Duration,
+};
+
+use vampirc_uci::UciTimeControl;
+
 use crate::{
-    board::{Board, Color},
+    board::{Board, Color, Piece, PieceKind},
     r#move::Move,
+    move_generator::Bitops,
+    uci::Status,
 };
 
 impl Board {
-    pub fn eval(&mut self) -> f64 {
-        let mut score = 0f64;
+    const WHITE_PAWN_SQUARE_TABLE: [i64; 64] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, -20, -20, 10, 10, 5, 5, -5, -10, 0, 0, -10, -5, 5, 0, 0,
+        0, 20, 20, 0, 0, 0, 5, 5, 10, 25, 25, 10, 5, 5, 10, 10, 20, 30, 30, 20, 10, 10, 50, 50, 50,
+        50, 50, 50, 50, 50, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+
+    const BLACK_PAWN_SQUARE_TABLE: [i64; 64] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50, 50, 50, 10, 10, 20, 30, 30, 20, 10, 10, 5,
+        5, 10, 25, 25, 10, 5, 5, 0, 0, 0, 20, 20, 0, 0, 0, 5, -5, -10, 0, 0, -10, -5, 5, 5, 10, 10,
+        -20, -20, 10, 10, 5, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    const KNIGHT_SQUARE_TABLE: [i64; 64] = [
+        -50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0, 5, 5, 0, -20, -40, -30, 5, 10, 15, 15,
+        10, 5, -30, -30, 0, 15, 20, 20, 15, 0, -30, -30, 5, 15, 20, 20, 15, 5, -30, -30, 0, 10, 15,
+        15, 10, 0, -30, -40, -20, 0, 0, 0, 0, -20, -40, -50, -40, -30, -30, -30, -30, -40, -50,
+    ];
+    const WHITE_BISHOP_SQUARE_TABLE: [i64; 64] = [
+        -20, -10, -10, -10, -10, -10, -10, -20, -10, 5, 0, 0, 0, 0, 5, -10, -10, 10, 10, 10, 10,
+        10, 10, -10, -10, 0, 10, 10, 10, 10, 0, -10, -10, 5, 5, 10, 10, 5, 5, -10, -10, 0, 5, 10,
+        10, 5, 0, -10, -10, 0, 0, 0, 0, 0, 0, -10, -20, -10, -10, -10, -10, -10, -10, -20,
+    ];
+    const BLACK_BISHOP_SQUARE_TABLE: [i64; 64] = [
+        -20, -10, -10, -10, -10, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 10, 10, 5,
+        0, -10, -10, 5, 5, 10, 10, 5, 5, -10, -10, 0, 10, 10, 10, 10, 0, -10, -10, 10, 10, 10, 10,
+        10, 10, -10, -10, 5, 0, 0, 0, 0, 5, -10, -20, -10, -10, -10, -10, -10, -10, -20,
+    ];
+    const WHITE_ROOK_SQUARE_TABLE: [i64; 64] = [
+        0, 0, 0, 5, 5, 0, 0, 0, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0,
+        0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, 5, 10, 10, 10, 10, 10, 10, 5,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    const BLACK_ROOK_SQUARE_TABLE: [i64; 64] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, 10, 10, 10, 10, 5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0,
+        0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0,
+        -5, 0, 0, 0, 5, 5, 0, 0, 0,
+    ];
+    const WHITE_QUEEN_SQUARE_TABLE: [i64; 64] = [
+        -20, -10, -10, -5, -5, -10, -10, -20, -10, 0, 5, 0, 0, 0, 0, -10, -10, 5, 5, 5, 5, 5, 0,
+        -10, 0, 0, 5, 5, 5, 5, 0, -5, -5, 0, 5, 5, 5, 5, 0, -5, -10, 0, 5, 5, 5, 5, 0, -10, -10, 0,
+        0, 0, 0, 0, 0, -10, -20, -10, -10, -5, -5, -10, -10, -20,
+    ];
+    const BLACK_QUEEN_SQUARE_TABLE: [i64; 64] = [
+        -20, -10, -10, -5, -5, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 5, 5, 5, 0,
+        -10, -5, 0, 5, 5, 5, 5, 0, -5, 0, 0, 5, 5, 5, 5, 0, -5, -10, 5, 5, 5, 5, 5, 0, -10, -10, 0,
+        5, 0, 0, 0, 0, -10, -20, -10, -10, -5, -5, -10, -10, -20,
+    ];
+    const WHITE_KING_SQUARE_TABLE: [i64; 64] = [
+        20, 30, 10, 0, 0, 10, 30, 20, 20, 20, 0, 0, 0, 0, 20, 20, -10, -20, -20, -20, -20, -20,
+        -20, -10, -20, -30, -30, -40, -40, -30, -30, -20, -30, -40, -40, -50, -50, -40, -40, -30,
+        -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -30, -40,
+        -40, -50, -50, -40, -40, -30,
+    ];
+    const BLACK_KING_SQUARE_TABLE: [i64; 64] = [
+        -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -30, -40,
+        -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -20, -30, -30, -40,
+        -40, -30, -30, -20, -10, -20, -20, -20, -20, -20, -20, -10, 20, 20, 0, 0, 0, 0, 20, 20, 20,
+        30, 10, 0, 0, 10, 30, 20,
+    ];
+
+    fn material_scores(&self) -> i64 {
+        let mut score = 0;
         for square in 0..64 {
-            score += self.get_piece(square).score()
+            let piece = self.get_piece(square);
+            score += piece.score();
         }
         score
+    }
+
+    fn square_table_scores(&self) -> i64 {
+        let mut score = 0;
+        for square in 0..64 {
+            let piece = self.get_piece(square);
+            if piece != Piece::new() {
+                score += match piece {
+                    Piece {
+                        color: Color::White,
+                        kind: PieceKind::Pawn,
+                    } => Self::WHITE_PAWN_SQUARE_TABLE,
+                    Piece {
+                        color: Color::Black,
+                        kind: PieceKind::Pawn,
+                    } => Self::BLACK_PAWN_SQUARE_TABLE,
+                    Piece {
+                        color: Color::White,
+                        kind: PieceKind::Rook,
+                    } => Self::WHITE_ROOK_SQUARE_TABLE,
+                    Piece {
+                        color: Color::Black,
+                        kind: PieceKind::Rook,
+                    } => Self::BLACK_ROOK_SQUARE_TABLE,
+                    Piece {
+                        color: Color::White,
+                        kind: PieceKind::Knight,
+                    } => Self::KNIGHT_SQUARE_TABLE,
+                    Piece {
+                        color: Color::Black,
+                        kind: PieceKind::Knight,
+                    } => Self::KNIGHT_SQUARE_TABLE,
+                    Piece {
+                        color: Color::White,
+                        kind: PieceKind::Bishop,
+                    } => Self::WHITE_BISHOP_SQUARE_TABLE,
+                    Piece {
+                        color: Color::Black,
+                        kind: PieceKind::Bishop,
+                    } => Self::BLACK_BISHOP_SQUARE_TABLE,
+                    Piece {
+                        color: Color::White,
+                        kind: PieceKind::Queen,
+                    } => Self::WHITE_QUEEN_SQUARE_TABLE,
+                    Piece {
+                        color: Color::Black,
+                        kind: PieceKind::Queen,
+                    } => Self::BLACK_QUEEN_SQUARE_TABLE,
+                    Piece {
+                        color: Color::White,
+                        kind: PieceKind::King,
+                    } => Self::WHITE_KING_SQUARE_TABLE,
+                    Piece {
+                        color: Color::Black,
+                        kind: PieceKind::King,
+                    } => Self::BLACK_KING_SQUARE_TABLE,
+                    _ => unreachable!(),
+                }[square as usize]
+                    * match self.turn {
+                        Color::White => 1,
+                        Color::Black => -1,
+                        Color::None => unreachable!(),
+                    };
+            }
+        }
+        score
+    }
+
+    fn moves_scores(&mut self) -> i64 {
+        let moves = self.generate_moves();
+        (if moves.is_empty() {
+            if self.king_under_attack((self.own_pieces() & self.kings).pop_lsb().unwrap()) {
+                -Search::BIG_NUM
+            } else {
+                -500
+            }
+        } else {
+            moves.len().isqrt() as i64 * 10
+        }) * match self.turn {
+            Color::White => 1,
+            Color::Black => -1,
+            Color::None => unreachable!(),
+        }
+    }
+
+    fn eval(&mut self) -> i64 {
+        let mut score = 0;
+        score += self.material_scores();
+        score += self.square_table_scores();
+        score += self.moves_scores();
+        score
             * match self.turn {
-                Color::White => 1f64,
-                Color::Black => -1f64,
+                Color::White => 1,
+                Color::Black => -1,
                 Color::None => unreachable!(),
             }
     }
+}
 
-    pub fn search(&mut self) -> Move {
-        let (alpha, beta) = (f64::MIN, f64::MAX);
-        self.negamax(5, alpha, beta).1
+pub struct Search {
+    best_move: Move,
+    depth: usize,
+
+    pv: Move,
+
+    stopper: Arc<RwLock<Status>>,
+}
+
+impl Search {
+    const BIG_NUM: i64 = 10000000;
+
+    fn new(stopper: Arc<RwLock<Status>>) -> Self {
+        Self {
+            best_move: Move::default(),
+            depth: 0,
+
+            pv: Move::default(),
+
+            stopper,
+        }
     }
 
-    fn negamax(&mut self, depth: usize, mut alpha: f64, beta: f64) -> (f64, Move) {
-        if depth == 0 {
-            return (self.eval(), Move::NULL);
+    pub fn search(
+        board: &mut Board,
+        time_control: Option<UciTimeControl>,
+        stopper: Arc<RwLock<Status>>,
+    ) -> Move {
+        let (alpha, beta) = (-Self::BIG_NUM, Self::BIG_NUM);
+        let mut search = Self::new(stopper.clone());
+        if let Some(time_control) = time_control {
+            let move_time = match time_control {
+                UciTimeControl::TimeLeft {
+                    white_time: Some(white_time),
+                    black_time: Some(black_time),
+                    ..
+                } => {
+                    eprintln!("{time_control:?}");
+                    eprintln!("{}", white_time.subsec_micros());
+                    match board.turn {
+                        Color::White => white_time.num_milliseconds() / 20,
+                        Color::Black => black_time.num_milliseconds() / 20,
+                        Color::None => unreachable!(),
+                    }
+                }
+                _ => 0,
+            };
+            if move_time != 0 {
+                let stopper = stopper.clone();
+                thread::spawn(move || {
+                    eprintln!("{move_time}");
+                    sleep(Duration::from_millis(move_time as u64));
+                    *stopper.write().unwrap() = Status::Stopping;
+                });
+                let mut depth = 1;
+                while *search.stopper.read().unwrap() != Status::Stopping {
+                    search.depth = depth;
+                    search.negamax(board, search.depth, alpha, beta);
+                    depth += 1;
+                }
+                return search.best_move;
+            }
         }
-        let mut best = (f64::MIN, Move::NULL);
-        for m in self.generate_moves() {
-            self.make_move(m);
-            let score = -self.negamax(depth - 1, -beta, -alpha).0;
-            self.unmake_move(m);
-            if score > best.0 {
-                best.0 = score;
-                best.1 = m;
+        let max_depth = 5;
+        for i in 1..=max_depth {
+            search.depth = i;
+            search.negamax(board, search.depth, alpha, beta);
+        }
+        search.best_move
+    }
+
+    fn mvv_lva(&self, board: &Board, a: Move, b: Move) -> Ordering {
+        if a == self.pv {
+            Ordering::Less
+        } else if b == self.pv {
+            Ordering::Greater
+        } else if a.is_capture() && !b.is_capture() {
+            Ordering::Less
+        } else if !a.is_capture() && b.is_capture() {
+            Ordering::Greater
+        } else if a.is_capture() && b.is_capture() {
+            if board.get_piece(a.to()).value() > board.get_piece(b.to()).value() {
+                Ordering::Less
+            } else if board.get_piece(a.to()).value() < board.get_piece(b.to()).value() {
+                Ordering::Greater
+            } else {
+                board
+                    .get_piece(a.from())
+                    .value()
+                    .cmp(&board.get_piece(b.from()).value())
+            }
+        } else {
+            Ordering::Equal
+        }
+    }
+
+    fn quiescence_search(&self, board: &mut Board, mut alpha: i64, beta: i64) -> i64 {
+        if *self.stopper.read().unwrap() == Status::Stopping {
+            return Self::BIG_NUM;
+        }
+        let mut best = board.eval();
+        // Stand Pat
+        if best >= beta {
+            return best;
+        }
+        if best > alpha {
+            alpha = best;
+        }
+
+        let mut moves = board
+            .generate_moves()
+            .iter()
+            .filter(|e| e.is_capture())
+            .cloned()
+            .collect::<Vec<_>>();
+
+        moves.sort_by(|a, b| self.mvv_lva(board, *a, *b));
+        for m in moves {
+            if !m.is_capture() {
+                continue;
+            }
+            board.make_move(m);
+            let score = -self.quiescence_search(board, -beta, -alpha);
+            board.unmake_move(m);
+            if score > best {
+                best = score;
                 if score > alpha {
                     alpha = score;
                 }
@@ -44,5 +316,44 @@ impl Board {
         }
 
         best
+    }
+
+    fn negamax(&mut self, board: &mut Board, depth: usize, mut alpha: i64, beta: i64) -> i64 {
+        if *self.stopper.read().unwrap() == Status::Stopping {
+            return Self::BIG_NUM;
+        }
+        if depth == 0 {
+            return self.quiescence_search(board, alpha, beta);
+        }
+        let mut best = -Self::BIG_NUM;
+        let mut moves = board.generate_moves();
+        moves.sort_by(|a, b| self.mvv_lva(board, *a, *b));
+        for m in moves {
+            board.make_move(m);
+            let score = -self.negamax(board, depth - 1, -beta, -alpha);
+            board.unmake_move(m);
+            if score > best {
+                best = score;
+                if depth == self.depth {
+                    self.best_move = m;
+                }
+                if score > alpha {
+                    alpha = score;
+                }
+            }
+            if score >= beta {
+                break;
+            }
+        }
+
+        if best == -Self::BIG_NUM {
+            if board.king_under_attack((board.own_pieces() & board.kings).pop_lsb().unwrap()) {
+                -Search::BIG_NUM + (self.depth - depth) as i64
+            } else {
+                500
+            }
+        } else {
+            best
+        }
     }
 }

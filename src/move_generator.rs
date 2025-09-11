@@ -3,7 +3,7 @@ use crate::{
     r#move::Move,
 };
 
-trait Bitops {
+pub trait Bitops {
     fn bitscan_forward(self) -> Square;
     fn bitscan_reverse(self) -> Square;
     fn pop_lsb(&mut self) -> Option<Square>;
@@ -112,11 +112,7 @@ impl Board {
     fn is_legal_move(&mut self, m: Move) -> bool {
         self.make_move(m);
 
-        let own = match self.turn {
-            Color::White => self.black_pieces,
-            Color::Black => self.white_pieces,
-            Color::None => unreachable!(),
-        };
+        let own = self.opponent_pieces();
 
         let is_legal = !self.king_under_attack((self.kings & own).pop_lsb().unwrap());
 
@@ -221,16 +217,8 @@ impl Board {
 
     fn generate_rook_moves(&mut self) -> Vec<Move> {
         let mut moves = Vec::new();
-        let own = match self.turn {
-            Color::White => self.white_pieces,
-            Color::Black => self.black_pieces,
-            Color::None => unreachable!(),
-        };
-        let opponent = match self.turn {
-            Color::White => self.black_pieces,
-            Color::Black => self.white_pieces,
-            Color::None => unreachable!(),
-        };
+        let own = self.own_pieces();
+        let opponent = self.opponent_pieces();
 
         let occupied = own | opponent;
 
@@ -262,16 +250,8 @@ impl Board {
 
     fn generate_knight_moves(&mut self) -> Vec<Move> {
         let mut moves = Vec::new();
-        let own = match self.turn {
-            Color::White => self.white_pieces,
-            Color::Black => self.black_pieces,
-            Color::None => unreachable!(),
-        };
-        let opponent = match self.turn {
-            Color::White => self.black_pieces,
-            Color::Black => self.white_pieces,
-            Color::None => unreachable!(),
-        };
+        let own = self.own_pieces();
+        let opponent = self.opponent_pieces();
 
         let free = !own;
 
@@ -302,16 +282,8 @@ impl Board {
 
     fn generate_bishop_moves(&mut self) -> Vec<Move> {
         let mut moves = Vec::new();
-        let own = match self.turn {
-            Color::White => self.white_pieces,
-            Color::Black => self.black_pieces,
-            Color::None => unreachable!(),
-        };
-        let opponent = match self.turn {
-            Color::White => self.black_pieces,
-            Color::Black => self.white_pieces,
-            Color::None => unreachable!(),
-        };
+        let own = self.own_pieces();
+        let opponent = self.opponent_pieces();
 
         let occupied = own | opponent;
 
@@ -339,16 +311,8 @@ impl Board {
 
     fn generate_queen_moves(&mut self) -> Vec<Move> {
         let mut moves = Vec::new();
-        let own = match self.turn {
-            Color::White => self.white_pieces,
-            Color::Black => self.black_pieces,
-            Color::None => unreachable!(),
-        };
-        let opponent = match self.turn {
-            Color::White => self.black_pieces,
-            Color::Black => self.white_pieces,
-            Color::None => unreachable!(),
-        };
+        let own = self.own_pieces();
+        let opponent = self.opponent_pieces();
 
         let occupied = own | opponent;
 
@@ -380,16 +344,8 @@ impl Board {
 
     fn generate_king_moves(&mut self) -> Vec<Move> {
         let mut moves = Vec::new();
-        let own = match self.turn {
-            Color::White => self.white_pieces,
-            Color::Black => self.black_pieces,
-            Color::None => unreachable!(),
-        };
-        let opponent = match self.turn {
-            Color::White => self.black_pieces,
-            Color::Black => self.white_pieces,
-            Color::None => unreachable!(),
-        };
+        let own = self.own_pieces();
+        let opponent = self.opponent_pieces();
 
         let occupied = own | opponent;
 
@@ -458,17 +414,9 @@ impl Board {
         bitmap
     }
 
-    fn king_under_attack(&self, king_pos: Square) -> bool {
-        let own = match self.turn {
-            Color::White => self.black_pieces,
-            Color::Black => self.white_pieces,
-            Color::None => unreachable!(),
-        };
-        let opponent = match self.turn {
-            Color::White => self.white_pieces,
-            Color::Black => self.black_pieces,
-            Color::None => unreachable!(),
-        };
+    pub fn king_under_attack(&self, king_pos: Square) -> bool {
+        let own = self.opponent_pieces();
+        let opponent = self.own_pieces();
 
         let occupied = own | opponent;
 

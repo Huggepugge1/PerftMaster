@@ -193,11 +193,11 @@ impl Move {
     pub fn as_ucimove(&self) -> UciMove {
         UciMove {
             from: UciSquare {
-                file: ('a' as u8 + (self.from() % 8) as u8) as char,
+                file: (b'a' + (self.from() % 8) as u8) as char,
                 rank: (self.from() / 8) as u8 + 1,
             },
             to: UciSquare {
-                file: ('a' as u8 + (self.to() % 8) as u8) as char,
+                file: (b'a' + (self.to() % 8) as u8) as char,
                 rank: (self.to() / 8) as u8 + 1,
             },
             promotion: match self.promotion() {

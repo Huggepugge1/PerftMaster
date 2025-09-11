@@ -74,8 +74,8 @@ impl std::ops::Sub<Color> for Square {
 
 #[derive(Default, Clone, Copy, Debug, PartialEq)]
 pub struct Piece {
-    color: Color,
-    kind: PieceKind,
+    pub color: Color,
+    pub kind: PieceKind,
 }
 
 impl Piece {
@@ -83,20 +83,25 @@ impl Piece {
         Self::default()
     }
 
-    pub fn score(self) -> f64 {
-        (match self.kind {
-            PieceKind::Pawn => 100f64,
-            PieceKind::Rook => 500f64,
-            PieceKind::Knight => 300f64,
-            PieceKind::Bishop => 300f64,
-            PieceKind::Queen => 900f64,
-            PieceKind::King => 100000f64,
-            PieceKind::None => 0f64,
-        }) * match self.color {
-            Color::White => 1f64,
-            Color::Black => -1f64,
-            Color::None => 0f64,
+    pub fn value(self) -> i64 {
+        match self.kind {
+            PieceKind::Pawn => 100,
+            PieceKind::Rook => 500,
+            PieceKind::Knight => 320,
+            PieceKind::Bishop => 330,
+            PieceKind::Queen => 900,
+            PieceKind::King => 100000,
+            PieceKind::None => 0,
         }
+    }
+
+    pub fn score(self) -> i64 {
+        self.value()
+            * match self.color {
+                Color::White => 1,
+                Color::Black => -1,
+                Color::None => 0,
+            }
     }
 }
 
@@ -143,6 +148,22 @@ impl Board {
     }
 
     pub fn new_game(&mut self) {}
+
+    pub fn own_pieces(&self) -> Bitmap {
+        match self.turn {
+            Color::White => self.white_pieces,
+            Color::Black => self.black_pieces,
+            Color::None => unreachable!(),
+        }
+    }
+
+    pub fn opponent_pieces(&self) -> Bitmap {
+        match self.turn {
+            Color::White => self.black_pieces,
+            Color::Black => self.white_pieces,
+            Color::None => unreachable!(),
+        }
+    }
 
     pub fn load_position(&mut self, fen: Option<UciFen>, moves: Vec<UciMove>) {
         self.clean_board();

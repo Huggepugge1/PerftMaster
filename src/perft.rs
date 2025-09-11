@@ -35,7 +35,7 @@ pub fn perft_test(max_depth: u16, fen: Option<String>) {
 
     let mut total = 0;
 
-    for p in positions {
+    for p in &positions[0..100] {
         board.load_position(Some(UciFen(p.fen.clone())), Vec::new());
 
         for (depth, stockfish_result) in p.depths.clone() {

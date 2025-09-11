@@ -28,7 +28,7 @@ impl ToSquare for String {
     }
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PieceKind {
     Pawn,
     Rook,
@@ -40,7 +40,7 @@ pub enum PieceKind {
     None,
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Color {
     White,
     Black,
@@ -72,7 +72,7 @@ impl std::ops::Sub<Color> for Square {
     }
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Piece {
     pub color: Color,
     pub kind: PieceKind,
@@ -111,7 +111,7 @@ pub enum CastleKind {
     None,
 }
 
-#[derive(Default, Clone, PartialEq)]
+#[derive(Default, Clone, PartialEq, Eq)]
 pub struct IrreversibleAspects {
     capture: Piece,
     half_move_clock: u16,
@@ -119,7 +119,7 @@ pub struct IrreversibleAspects {
     castling_rights: u8,
 }
 
-#[derive(Default, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Board {
     pub white_pieces: Bitmap,
     pub black_pieces: Bitmap,
@@ -140,6 +140,39 @@ pub struct Board {
     pub turn: Color,
 
     pub game_stack: Vec<IrreversibleAspects>,
+
+    pub zobrist_hash: u64,
+    // Pieces (768) | Side to move (1) | Castling Rights (4) | En Passant (8)
+    pub zobrist_values: [u64; 781],
+}
+
+impl Default for Board {
+    fn default() -> Self {
+        let mut zobrist_values = [0; 781];
+
+        for i in zobrist_values.iter_mut() {
+            *i = rand::random();
+        }
+
+        Self {
+            white_pieces: Default::default(),
+            black_pieces: Default::default(),
+            pawns: Default::default(),
+            rooks: Default::default(),
+            knights: Default::default(),
+            bishops: Default::default(),
+            queens: Default::default(),
+            kings: Default::default(),
+            ep: Default::default(),
+            half_move_clock: Default::default(),
+            full_move_clock: Default::default(),
+            castling_rights: Default::default(),
+            turn: Default::default(),
+            game_stack: Default::default(),
+            zobrist_hash: Default::default(),
+            zobrist_values,
+        }
+    }
 }
 
 impl Board {
@@ -181,6 +214,8 @@ impl Board {
             let m = Move::from_ucimove(self, ucimove);
             self.make_move(m);
         }
+
+        self.calculate_zobrist();
     }
 
     fn load_startpos(&mut self) {
@@ -272,6 +307,36 @@ impl Board {
         self.full_move_clock = fullmove_clock.parse().unwrap();
     }
 
+    fn calculate_zobrist(&mut self) {
+        for square in 0..64 {
+            let piece = self.get_piece(square);
+            if piece.kind != PieceKind::None {
+                self.zobrist_hash ^= self.zobrist_values
+                    [square as usize + piece.kind as usize * 128 + piece.color as usize * 64];
+            }
+        }
+
+        if self.turn == Color::Black {
+            self.zobrist_hash ^= self.zobrist_values[768];
+        }
+
+        if self.castling_rights & 0b1000 > 0 {
+            self.zobrist_hash ^= self.zobrist_values[769];
+        }
+        if self.castling_rights & 0b0100 > 0 {
+            self.zobrist_hash ^= self.zobrist_values[770];
+        }
+        if self.castling_rights & 0b0010 > 0 {
+            self.zobrist_hash ^= self.zobrist_values[771];
+        }
+        if self.castling_rights & 0b0001 > 0 {
+            self.zobrist_hash ^= self.zobrist_values[772];
+        }
+        if self.ep != -1 {
+            self.zobrist_hash ^= self.zobrist_values[773 + (self.ep % 8) as usize];
+        }
+    }
+
     pub fn annotate_move(&self, m: Move, promotion: PieceKind) -> Move {
         let mut flags = 0;
         let from = m.from();
@@ -336,10 +401,23 @@ impl Board {
             // If a rook is captured, remove castling_rights
             if to_piece.kind == PieceKind::Rook {
                 match to {
-                    0 => self.castling_rights &= 0b1011,
-                    7 => self.castling_rights &= 0b0111,
-                    56 => self.castling_rights &= 0b1110,
-                    63 => self.castling_rights &= 0b1101,
+                    0 => {
+                        self.castling_rights &= 0b1011;
+                        self.zobrist_hash ^= self.zobrist_values[770];
+                    }
+                    7 => {
+                        self.castling_rights &= 0b0111;
+
+                        self.zobrist_hash ^= self.zobrist_values[769];
+                    }
+                    56 => {
+                        self.castling_rights &= 0b1110;
+                        self.zobrist_hash ^= self.zobrist_values[772];
+                    }
+                    63 => {
+                        self.castling_rights &= 0b1101;
+                        self.zobrist_hash ^= self.zobrist_values[771];
+                    }
                     _ => (),
                 }
             }
@@ -352,7 +430,9 @@ impl Board {
         }
         if m.is_double_push() {
             self.ep = to - self.turn;
-        } else {
+            self.zobrist_hash ^= self.zobrist_values[773 + (self.ep % 8) as usize];
+        } else if self.ep != -1 {
+            self.zobrist_hash ^= self.zobrist_values[773 + (self.ep % 8) as usize];
             self.ep = -1;
         }
 
@@ -366,8 +446,16 @@ impl Board {
         if m.is_castle() {
             self.toggle_castle(m, from);
             match self.turn {
-                Color::White => self.castling_rights &= 0b0011,
-                Color::Black => self.castling_rights &= 0b1100,
+                Color::White => {
+                    self.castling_rights &= 0b0011;
+                    self.zobrist_hash ^= self.zobrist_values[769];
+                    self.zobrist_hash ^= self.zobrist_values[770];
+                }
+                Color::Black => {
+                    self.castling_rights &= 0b1100;
+                    self.zobrist_hash ^= self.zobrist_values[771];
+                    self.zobrist_hash ^= self.zobrist_values[772];
+                }
                 Color::None => unreachable!(),
             }
         }
@@ -375,8 +463,16 @@ impl Board {
         // King moves
         if from_piece.kind == PieceKind::King {
             match self.turn {
-                Color::White => self.castling_rights &= 0b0011,
-                Color::Black => self.castling_rights &= 0b1100,
+                Color::White => {
+                    self.castling_rights &= 0b0011;
+                    self.zobrist_hash ^= self.zobrist_values[769];
+                    self.zobrist_hash ^= self.zobrist_values[770];
+                }
+                Color::Black => {
+                    self.castling_rights &= 0b1100;
+                    self.zobrist_hash ^= self.zobrist_values[771];
+                    self.zobrist_hash ^= self.zobrist_values[772];
+                }
                 Color::None => unreachable!(),
             }
         }
@@ -384,10 +480,23 @@ impl Board {
         // Rook moves
         if from_piece.kind == PieceKind::Rook {
             match from {
-                0 => self.castling_rights &= 0b1011,
-                7 => self.castling_rights &= 0b0111,
-                56 => self.castling_rights &= 0b1110,
-                63 => self.castling_rights &= 0b1101,
+                0 => {
+                    self.castling_rights &= 0b1011;
+                    self.zobrist_hash ^= self.zobrist_values[770];
+                }
+                7 => {
+                    self.castling_rights &= 0b0111;
+
+                    self.zobrist_hash ^= self.zobrist_values[769];
+                }
+                56 => {
+                    self.castling_rights &= 0b1110;
+                    self.zobrist_hash ^= self.zobrist_values[772];
+                }
+                63 => {
+                    self.castling_rights &= 0b1101;
+                    self.zobrist_hash ^= self.zobrist_values[771];
+                }
                 _ => (),
             }
         }
@@ -414,6 +523,25 @@ impl Board {
             half_move_clock,
             castling_rights,
         } = self.game_stack.pop().unwrap();
+
+        if ep != -1 {
+            self.zobrist_hash ^= self.zobrist_values[773 + (ep % 8) as usize];
+        }
+        if self.ep != -1 {
+            self.zobrist_hash ^= self.zobrist_values[773 + (self.ep % 8) as usize];
+        }
+
+        if self.castling_rights != castling_rights {
+            if (self.castling_rights ^ castling_rights) & 0b1000 > 0 {
+                self.zobrist_hash ^= self.zobrist_values[769];
+            } else if (self.castling_rights ^ castling_rights) & 0b0100 > 0 {
+                self.zobrist_hash ^= self.zobrist_values[770];
+            } else if (self.castling_rights ^ castling_rights) & 0b0010 > 0 {
+                self.zobrist_hash ^= self.zobrist_values[771];
+            } else if (self.castling_rights ^ castling_rights) & 0b0001 > 0 {
+                self.zobrist_hash ^= self.zobrist_values[772];
+            }
+        }
 
         let m = m.reverse();
 
@@ -468,6 +596,11 @@ impl Board {
             PieceKind::King => self.kings ^= bitmap,
             PieceKind::None => unreachable!(),
         }
+
+        self.zobrist_hash ^= self.zobrist_values
+            [m.from() as usize + piece.kind as usize * 128 + piece.color as usize * 64];
+        self.zobrist_hash ^= self.zobrist_values
+            [m.to() as usize + piece.kind as usize * 128 + piece.color as usize * 64];
     }
 
     fn toggle_piece(&mut self, piece: Piece, square: Square) {
@@ -487,19 +620,26 @@ impl Board {
             PieceKind::King => self.kings ^= bitmap,
             PieceKind::None => unreachable!(),
         }
+
+        self.zobrist_hash ^= self.zobrist_values
+            [square as usize + piece.kind as usize * 128 + piece.color as usize * 64];
     }
 
     fn toggle_promotion(&mut self, piecekind: PieceKind, square: Square) {
-        let bitmap = 1 << square;
-        self.pawns ^= bitmap;
-
-        match piecekind {
-            PieceKind::Rook => self.rooks ^= bitmap,
-            PieceKind::Knight => self.knights ^= bitmap,
-            PieceKind::Bishop => self.bishops ^= bitmap,
-            PieceKind::Queen => self.queens ^= bitmap,
-            _ => unreachable!(),
-        }
+        self.toggle_piece(
+            Piece {
+                color: self.turn,
+                kind: PieceKind::Pawn,
+            },
+            square,
+        );
+        self.toggle_piece(
+            Piece {
+                color: self.turn,
+                kind: piecekind,
+            },
+            square,
+        );
     }
 
     fn toggle_castle(&mut self, m: Move, from: i16) {
@@ -529,6 +669,7 @@ impl Board {
         } else {
             self.turn = Color::White;
         }
+        self.zobrist_hash ^= self.zobrist_values[768];
     }
 
     pub fn get_piece(&self, square: Square) -> Piece {
@@ -601,5 +742,42 @@ pub fn piece_to_ascii(piece: Piece) -> char {
         Color::White => chr.to_ascii_uppercase(),
         Color::Black => chr,
         Color::None => chr,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{board, r#move::Move};
+
+    #[test]
+    fn test_zobrist_startpos_double_push() {
+        let mut board = board::Board::default();
+        board.load_position(None, Vec::new());
+        let m = Move::new(9, 25, 1);
+        let zobrist = board.zobrist_hash;
+        board.make_move(m);
+        board.unmake_move(m);
+        assert_eq!(zobrist, board.zobrist_hash);
+    }
+
+    #[test]
+    fn test_zobrist_en_passant() {
+        let mut board = board::Board::default();
+        board.load_position(None, Vec::new());
+        let m1 = Move::new(8, 24, 1);
+        let m2 = Move::new(48, 40, 0);
+        let m3 = Move::new(24, 32, 0);
+        let m4 = Move::new(49, 33, 1);
+        let m5 = Move::new(32, 41, 0b0101);
+
+        board.make_move(m1);
+        board.make_move(m2);
+        board.make_move(m3);
+        board.make_move(m4);
+
+        let zobrist = board.zobrist_hash;
+        board.make_move(m5);
+        board.unmake_move(m5);
+        assert_eq!(zobrist, board.zobrist_hash)
     }
 }

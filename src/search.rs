@@ -1,8 +1,9 @@
 use std::{
     cmp::Ordering,
-    sync::{Arc, RwLock},
+    collections::HashMap,
+    sync::{Arc, RwLock, mpsc::channel},
     thread::{self, sleep},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use vampirc_uci::UciTimeControl;
@@ -152,10 +153,14 @@ impl Board {
     fn moves_scores(&mut self) -> i64 {
         let moves = self.generate_moves();
         (if moves.is_empty() {
-            if self.king_under_attack((self.own_pieces() & self.kings).pop_lsb().unwrap()) {
+            self.change_turn();
+            let king_under_attack =
+                self.king_under_attack((self.opponent_pieces() & self.kings).pop_lsb().unwrap());
+            self.change_turn();
+            if king_under_attack {
                 -Search::BIG_NUM
             } else {
-                -500
+                500
             }
         } else {
             moves.len().isqrt() as i64 * 10
@@ -180,11 +185,19 @@ impl Board {
     }
 }
 
+#[derive(Debug)]
 pub struct Search {
-    best_move: Move,
+    pub best_move: Move,
     depth: usize,
 
-    pv: Move,
+    tt: HashMap<u64, (usize, i64)>,
+
+    hits: usize,
+    nodes: usize,
+
+    score: i64,
+
+    start: Instant,
 
     stopper: Arc<RwLock<Status>>,
 }
@@ -197,18 +210,25 @@ impl Search {
             best_move: Move::default(),
             depth: 0,
 
-            pv: Move::default(),
+            tt: HashMap::new(),
+
+            hits: 0,
+            nodes: 0,
+
+            score: 0,
+
+            start: Instant::now(),
 
             stopper,
         }
     }
 
-    pub fn search(
+    pub fn go(
         board: &mut Board,
         time_control: Option<UciTimeControl>,
         stopper: Arc<RwLock<Status>>,
-    ) -> Move {
-        let (alpha, beta) = (-Self::BIG_NUM, Self::BIG_NUM);
+    ) -> Search {
+        let (alpha, beta) = (-i64::MAX, i64::MAX);
         let mut search = Self::new(stopper.clone());
         if let Some(time_control) = time_control {
             let move_time = match time_control {
@@ -216,31 +236,40 @@ impl Search {
                     white_time: Some(white_time),
                     black_time: Some(black_time),
                     ..
-                } => {
-                    eprintln!("{time_control:?}");
-                    eprintln!("{}", white_time.subsec_micros());
-                    match board.turn {
-                        Color::White => white_time.num_milliseconds() / 20,
-                        Color::Black => black_time.num_milliseconds() / 20,
-                        Color::None => unreachable!(),
-                    }
-                }
+                } => match board.turn {
+                    Color::White => white_time.num_milliseconds() / 20,
+                    Color::Black => black_time.num_milliseconds() / 20,
+                    Color::None => unreachable!(),
+                },
                 _ => 0,
             };
             if move_time != 0 {
                 let stopper = stopper.clone();
+                let (sender, receiver) = channel();
                 thread::spawn(move || {
-                    eprintln!("{move_time}");
                     sleep(Duration::from_millis(move_time as u64));
-                    *stopper.write().unwrap() = Status::Stopping;
+                    if receiver.try_recv().is_err() {
+                        *stopper.write().unwrap() = Status::Stopping;
+                    }
                 });
                 let mut depth = 1;
                 while *search.stopper.read().unwrap() != Status::Stopping {
                     search.depth = depth;
-                    search.negamax(board, search.depth, alpha, beta);
+                    search.score = search.negamax(board, search.depth, alpha, beta);
+                    println!(
+                        "info depth {} score cp {} nodes {} nps {} tthits {} best {}",
+                        search.depth,
+                        search.score,
+                        search.nodes,
+                        (search.nodes as f64 / search.start.elapsed().as_secs_f64()) as u64,
+                        search.hits,
+                        search.best_move,
+                    );
                     depth += 1;
                 }
-                return search.best_move;
+
+                let _ = sender.send(());
+                return search;
             }
         }
         let max_depth = 5;
@@ -248,13 +277,13 @@ impl Search {
             search.depth = i;
             search.negamax(board, search.depth, alpha, beta);
         }
-        search.best_move
+        search
     }
 
     fn mvv_lva(&self, board: &Board, a: Move, b: Move) -> Ordering {
-        if a == self.pv {
+        if a == self.best_move {
             Ordering::Less
-        } else if b == self.pv {
+        } else if b == self.best_move {
             Ordering::Greater
         } else if a.is_capture() && !b.is_capture() {
             Ordering::Less
@@ -276,7 +305,8 @@ impl Search {
         }
     }
 
-    fn quiescence_search(&self, board: &mut Board, mut alpha: i64, beta: i64) -> i64 {
+    fn quiescence_search(&mut self, board: &mut Board, mut alpha: i64, beta: i64) -> i64 {
+        self.nodes += 1;
         if *self.stopper.read().unwrap() == Status::Stopping {
             return Self::BIG_NUM;
         }
@@ -319,13 +349,20 @@ impl Search {
     }
 
     fn negamax(&mut self, board: &mut Board, depth: usize, mut alpha: i64, beta: i64) -> i64 {
+        self.nodes += 1;
+        if let Some((tt_depth, score)) = self.tt.get(&board.zobrist_hash)
+            && depth <= *tt_depth
+        {
+            self.hits += 1;
+            return *score;
+        }
         if *self.stopper.read().unwrap() == Status::Stopping {
             return Self::BIG_NUM;
         }
         if depth == 0 {
             return self.quiescence_search(board, alpha, beta);
         }
-        let mut best = -Self::BIG_NUM;
+        let mut best = -i64::MAX;
         let mut moves = board.generate_moves();
         moves.sort_by(|a, b| self.mvv_lva(board, *a, *b));
         for m in moves {
@@ -347,12 +384,20 @@ impl Search {
         }
 
         if best == -Self::BIG_NUM {
-            if board.king_under_attack((board.own_pieces() & board.kings).pop_lsb().unwrap()) {
-                -Search::BIG_NUM + (self.depth - depth) as i64
+            board.change_turn();
+            let king_under_attack =
+                board.king_under_attack((board.opponent_pieces() & board.kings).pop_lsb().unwrap());
+            board.change_turn();
+            if king_under_attack {
+                let score = -Search::BIG_NUM + (self.depth - depth) as i64;
+                self.tt.insert(board.zobrist_hash, (depth, score));
+                score
             } else {
+                self.tt.insert(board.zobrist_hash, (depth, 500));
                 500
             }
         } else {
+            self.tt.insert(board.zobrist_hash, (depth, best));
             best
         }
     }

@@ -7,7 +7,7 @@ use std::thread;
 use crate::board::Board;
 use crate::search::Search;
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Status {
     Idle,
     Go,
@@ -29,7 +29,7 @@ pub fn run() {
                     println!(
                         "{}",
                         UciMessage::Id {
-                            name: Some(String::from("Perftmaster v0.4.0")),
+                            name: Some(String::from("Perftmaster v0.5.0")),
                             author: Some(String::from("Hugo Lindström")),
                         }
                         .serialize()
@@ -47,12 +47,9 @@ pub fn run() {
                         println!(
                             "{}",
                             UciMessage::BestMove {
-                                best_move: Search::search(
-                                    &mut board,
-                                    time_control,
-                                    stopper.clone()
-                                )
-                                .as_ucimove(),
+                                best_move: Search::go(&mut board, time_control, stopper.clone())
+                                    .best_move
+                                    .as_ucimove(),
                                 ponder: None,
                             }
                         );

@@ -1,5 +1,6 @@
 /target
 /chess-position-generator/venv
 
+callgrind.out.*
 info.log
 log.pgn

@@ -79,6 +79,11 @@ pub struct Piece {
 }
 
 impl Piece {
+    const NONE: Self = Self {
+        color: Color::None,
+        kind: PieceKind::None,
+    };
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -690,28 +695,31 @@ impl Board {
     }
 
     pub fn get_piece(&self, square: Square) -> Piece {
-        let mut piece = Piece::new();
-        if (self.white_pieces & (1 << square)) > 0 {
-            piece.color = Color::White;
+        let color = if (self.white_pieces & (1 << square)) > 0 {
+            Color::White
         } else if (self.black_pieces & (1 << square)) > 0 {
-            piece.color = Color::Black;
-        }
+            Color::Black
+        } else {
+            return Piece::NONE;
+        };
 
-        if (self.pawns & (1 << square)) > 0 {
-            piece.kind = PieceKind::Pawn;
+        let kind = if (self.pawns & (1 << square)) > 0 {
+            PieceKind::Pawn
         } else if (self.rooks & (1 << square)) > 0 {
-            piece.kind = PieceKind::Rook;
+            PieceKind::Rook
         } else if (self.knights & (1 << square)) > 0 {
-            piece.kind = PieceKind::Knight;
+            PieceKind::Knight
         } else if (self.bishops & (1 << square)) > 0 {
-            piece.kind = PieceKind::Bishop;
+            PieceKind::Bishop
         } else if (self.queens & (1 << square)) > 0 {
-            piece.kind = PieceKind::Queen;
+            PieceKind::Queen
         } else if (self.kings & (1 << square)) > 0 {
-            piece.kind = PieceKind::King;
-        }
+            PieceKind::King
+        } else {
+            unreachable!()
+        };
 
-        piece
+        Piece { color, kind }
     }
 
     pub fn print(&self) {

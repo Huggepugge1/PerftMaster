@@ -22,6 +22,9 @@ enum Command {
 
         #[arg(long)]
         fen: Option<String>,
+
+        #[arg(long, short)]
+        zobrist: bool,
     },
 }
 
@@ -29,7 +32,14 @@ fn main() {
     let args = Args::parse();
 
     match args.command {
-        Some(Command::Perft { depth, fen }) => perft::perft_test(depth, fen),
+        Some(Command::Perft {
+            depth,
+            fen,
+            zobrist,
+        }) => match zobrist {
+            false => perft::perft_test(depth, fen),
+            true => perft::zobrist_test(depth, fen),
+        },
         None => uci::run(),
     }
 }

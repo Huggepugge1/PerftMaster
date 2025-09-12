@@ -36,6 +36,14 @@ Elo: 478.0 +/- 108.4 (Against random)
 Implemented piece square tables, quiecence search, MVV-LVA and time management.
 
 ### Performance
-#### OBS: Elo is now calculated on a new time control (40/8+0.08)
+#### OBS: Elo is now calculated on a new time control (8+0.08)
 perft-speed: ~5M nodes/s (unchanged code)
 Elo: 246.2 +/- 86.1 (Against random)
+
+## Version 0.5.0
+### Whats changed
+Implemented transposition tables as well as some general improvements
+
+### Performance
+perft-speed: ~5M nodes/s
+Elo: 524.10 +/- 93.16 (Against v4)

@@ -51,56 +51,118 @@ const NOT_AB_FILE: Bitmap = 0xFCFCFCFCFCFCFCFC;
 const NOT_GH_FILE: Bitmap = 0x3F3F3F3F3F3F3F3F;
 const NOT_H_FILE: Bitmap = 0x7F7F7F7F7F7F7F7F;
 
-fn get_ray(mut current: Square, dir: Square) -> Bitmap {
-    let mut result = 0;
-    current += dir;
-    if dir % 8 == 1 || dir % 8 == -7 {
-        while (current + 8) % 8 > 0 && (0..64).contains(&current) {
-            result |= 1 << current;
-            current += dir;
+#[derive(Clone, Copy, Debug)]
+enum Dir {
+    North,
+    NorthWest,
+    NorthEast,
+    South,
+    SouthWest,
+    SouthEast,
+    West,
+    East,
+}
+
+impl Dir {
+    const CARDINALITY: usize = 8;
+    const MEMBERS: [Dir; 8] = [
+        Dir::North,
+        Dir::NorthWest,
+        Dir::NorthEast,
+        Dir::South,
+        Dir::SouthWest,
+        Dir::SouthEast,
+        Dir::West,
+        Dir::East,
+    ];
+
+    const fn to_square(self) -> Square {
+        match self {
+            Dir::North => 8,
+            Dir::NorthEast => 9,
+            Dir::NorthWest => 7,
+            Dir::East => 1,
+            Dir::West => -1,
+            Dir::South => -8,
+            Dir::SouthWest => -9,
+            Dir::SouthEast => -7,
         }
-    } else if dir % 8 == 7 || dir % 8 == -1 {
-        while (current + 8) % 8 < 7 && (0..64).contains(&current) {
+    }
+
+    const fn rem(self, rhs: Square) -> Square {
+        (self.to_square() + 16) % rhs
+    }
+}
+
+static RAYS: [[Bitmap; 64]; 8] = generate_rays();
+
+const fn generate_rays() -> [[Bitmap; 64]; 8] {
+    let mut rays = [[0; 64]; 8];
+
+    let mut square = 0;
+    while square < 64 {
+        let mut dir = 0;
+        while dir < Dir::CARDINALITY {
+            rays[dir][square] = get_ray(square as Square, Dir::MEMBERS[dir]);
+            dir += 1;
+        }
+        square += 1;
+    }
+
+    rays
+}
+
+const fn get_ray(mut current: Square, dir: Dir) -> Bitmap {
+    let mut result = 0;
+    current += dir.to_square();
+    if dir.rem(8) == 1 {
+        while (current + 8) % 8 > 0 && 0 <= current && current < 64 {
             result |= 1 << current;
-            current += dir;
+            current += dir.to_square();
+        }
+    } else if dir.rem(8) == 7 {
+        while (current + 8) % 8 < 7 && 0 <= current && current < 64 {
+            result |= 1 << current;
+            current += dir.to_square();
         }
     } else {
-        while (0..64).contains(&current) {
+        while 0 <= current && current < 64 {
             result |= 1 << current;
-            current += dir;
+            current += dir.to_square();
         }
     }
     result
 }
 
-fn get_positive_ray_attacks(mut square: Square, dir: Square, occupied: Bitmap) -> Bitmap {
-    let mut attacks = get_ray(square, dir);
+fn get_positive_ray_attacks(mut square: Square, dir: Dir, occupied: Bitmap) -> Bitmap {
+    let mut attacks = RAYS[dir as usize][square as usize];
     let blocker = attacks & occupied;
     if blocker > 0 {
         square = blocker.bitscan_forward();
-        attacks ^= get_ray(square, dir);
+        attacks ^= RAYS[dir as usize][square as usize];
     }
     attacks
 }
 
-fn get_negative_ray_attacks(mut square: Square, dir: Square, occupied: Bitmap) -> Bitmap {
-    let mut attacks = get_ray(square, dir);
+fn get_negative_ray_attacks(mut square: Square, dir: Dir, occupied: Bitmap) -> Bitmap {
+    let mut attacks = RAYS[dir as usize][square as usize];
     let blocker = attacks & occupied;
     if blocker > 0 {
         square = blocker.bitscan_reverse();
-        attacks ^= get_ray(square, dir);
+        attacks ^= RAYS[dir as usize][square as usize];
     }
     attacks
 }
 
 impl Board {
     pub fn generate_moves(&mut self) -> Vec<Move> {
-        let mut moves = self.generate_pawn_moves();
-        moves.append(&mut self.generate_rook_moves());
-        moves.append(&mut self.generate_knight_moves());
-        moves.append(&mut self.generate_bishop_moves());
-        moves.append(&mut self.generate_queen_moves());
-        moves.append(&mut self.generate_king_moves());
+        let mut moves = Vec::new();
+        self.generate_pawn_moves(&mut moves);
+        self.generate_rook_moves(&mut moves);
+        self.generate_knight_moves(&mut moves);
+        self.generate_bishop_moves(&mut moves);
+        self.generate_queen_moves(&mut moves);
+        self.generate_king_moves(&mut moves);
 
         moves
             .iter()
@@ -120,16 +182,15 @@ impl Board {
         is_legal
     }
 
-    fn generate_pawn_moves(&mut self) -> Vec<Move> {
+    fn generate_pawn_moves(&mut self, moves: &mut Vec<Move>) {
         match self.turn {
-            Color::White => self.generate_white_pawn_moves(),
-            Color::Black => self.generate_black_pawn_moves(),
+            Color::White => self.generate_white_pawn_moves(moves),
+            Color::Black => self.generate_black_pawn_moves(moves),
             Color::None => unreachable!(),
         }
     }
 
-    fn generate_white_pawn_moves(&mut self) -> Vec<Move> {
-        let mut moves = Vec::new();
+    fn generate_white_pawn_moves(&mut self, moves: &mut Vec<Move>) {
         let mut pawns = self.pawns & self.white_pieces;
         let blockers = self.white_pieces | self.black_pieces;
         let free = !blockers;
@@ -163,8 +224,6 @@ impl Board {
                 }
             }
         }
-
-        moves
     }
 
     fn white_pawn_attacks(&self, from: i16) -> u64 {
@@ -172,8 +231,7 @@ impl Board {
             | (Bitmap::checked_shl(1, (from + 9) as u32).unwrap_or(0) & NOT_A_FILE)
     }
 
-    fn generate_black_pawn_moves(&mut self) -> Vec<Move> {
-        let mut moves = Vec::new();
+    fn generate_black_pawn_moves(&mut self, moves: &mut Vec<Move>) {
         let mut pawns = self.pawns & self.black_pieces;
         let blockers = self.white_pieces | self.black_pieces;
         let free = !blockers;
@@ -207,7 +265,6 @@ impl Board {
                 }
             }
         }
-        moves
     }
 
     fn black_pawn_attacks(&self, from: i16) -> u64 {
@@ -215,8 +272,7 @@ impl Board {
             | (Bitmap::checked_shl(1, (from - 9) as u32).unwrap_or(0) & NOT_H_FILE)
     }
 
-    fn generate_rook_moves(&mut self) -> Vec<Move> {
-        let mut moves = Vec::new();
+    fn generate_rook_moves(&mut self, moves: &mut Vec<Move>) {
         let own = self.own_pieces();
         let opponent = self.opponent_pieces();
 
@@ -237,19 +293,16 @@ impl Board {
                 moves.push(Move::new(from, to, flags));
             }
         }
-
-        moves
     }
 
     fn rook_attacks(&self, from: i16, occupied: u64) -> u64 {
-        get_positive_ray_attacks(from, 1, occupied)
-            | get_positive_ray_attacks(from, 8, occupied)
-            | get_negative_ray_attacks(from, -1, occupied)
-            | get_negative_ray_attacks(from, -8, occupied)
+        get_positive_ray_attacks(from, Dir::North, occupied)
+            | get_positive_ray_attacks(from, Dir::East, occupied)
+            | get_negative_ray_attacks(from, Dir::West, occupied)
+            | get_negative_ray_attacks(from, Dir::South, occupied)
     }
 
-    fn generate_knight_moves(&mut self) -> Vec<Move> {
-        let mut moves = Vec::new();
+    fn generate_knight_moves(&mut self, moves: &mut Vec<Move>) {
         let own = self.own_pieces();
         let opponent = self.opponent_pieces();
 
@@ -265,8 +318,6 @@ impl Board {
                 moves.push(Move::new(from, to, flags));
             }
         }
-
-        moves
     }
 
     fn knight_attacks(&self, from: i16) -> u64 {
@@ -280,8 +331,7 @@ impl Board {
             | (Bitmap::checked_shl(1, (from - 15) as u32).unwrap_or(0) & NOT_A_FILE)
     }
 
-    fn generate_bishop_moves(&mut self) -> Vec<Move> {
-        let mut moves = Vec::new();
+    fn generate_bishop_moves(&mut self, moves: &mut Vec<Move>) {
         let own = self.own_pieces();
         let opponent = self.opponent_pieces();
 
@@ -298,19 +348,16 @@ impl Board {
                 moves.push(Move::new(from, to, flags));
             }
         }
-
-        moves
     }
 
     fn bishop_attacks(&self, from: i16, occupied: u64) -> u64 {
-        get_positive_ray_attacks(from, 7, occupied)
-            | get_positive_ray_attacks(from, 9, occupied)
-            | get_negative_ray_attacks(from, -7, occupied)
-            | get_negative_ray_attacks(from, -9, occupied)
+        get_positive_ray_attacks(from, Dir::NorthWest, occupied)
+            | get_positive_ray_attacks(from, Dir::NorthEast, occupied)
+            | get_negative_ray_attacks(from, Dir::SouthEast, occupied)
+            | get_negative_ray_attacks(from, Dir::SouthWest, occupied)
     }
 
-    fn generate_queen_moves(&mut self) -> Vec<Move> {
-        let mut moves = Vec::new();
+    fn generate_queen_moves(&mut self, moves: &mut Vec<Move>) {
         let own = self.own_pieces();
         let opponent = self.opponent_pieces();
 
@@ -327,23 +374,20 @@ impl Board {
                 moves.push(Move::new(from, to, flags));
             }
         }
-
-        moves
     }
 
     fn queen_attacks(&self, from: i16, occupied: u64) -> u64 {
-        get_positive_ray_attacks(from, 1, occupied)
-            | get_positive_ray_attacks(from, 7, occupied)
-            | get_positive_ray_attacks(from, 8, occupied)
-            | get_positive_ray_attacks(from, 9, occupied)
-            | get_negative_ray_attacks(from, -1, occupied)
-            | get_negative_ray_attacks(from, -7, occupied)
-            | get_negative_ray_attacks(from, -8, occupied)
-            | get_negative_ray_attacks(from, -9, occupied)
+        get_positive_ray_attacks(from, Dir::NorthWest, occupied)
+            | get_positive_ray_attacks(from, Dir::North, occupied)
+            | get_positive_ray_attacks(from, Dir::NorthEast, occupied)
+            | get_positive_ray_attacks(from, Dir::East, occupied)
+            | get_negative_ray_attacks(from, Dir::SouthEast, occupied)
+            | get_negative_ray_attacks(from, Dir::South, occupied)
+            | get_negative_ray_attacks(from, Dir::SouthWest, occupied)
+            | get_negative_ray_attacks(from, Dir::West, occupied)
     }
 
-    fn generate_king_moves(&mut self) -> Vec<Move> {
-        let mut moves = Vec::new();
+    fn generate_king_moves(&mut self, moves: &mut Vec<Move>) {
         let own = self.own_pieces();
         let opponent = self.opponent_pieces();
 
@@ -401,8 +445,6 @@ impl Board {
         }
 
         self.change_turn();
-
-        moves
     }
 
     fn king_attacks(&self, from: i16) -> u64 {

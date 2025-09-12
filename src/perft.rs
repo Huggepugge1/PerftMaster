@@ -56,6 +56,29 @@ pub fn perft_test(max_depth: u16, fen: Option<String>) {
     println!("Test successful!");
 }
 
+pub fn zobrist_test(max_depth: u16, fen: Option<String>) {
+    let mut board = Board::new();
+
+    if let Some(fen) = fen {
+        board.load_position(Some(UciFen(fen.clone())), Vec::new());
+        board.perft_zobrist(max_depth, &fen, max_depth);
+        println!("Test successful!");
+        return;
+    }
+
+    let data = fs::read_to_string("./chess-position-generator/perft_dataset.json").unwrap();
+    let positions: Vec<Position> = serde_json::from_str(&data).unwrap();
+
+    for p in &positions[0..100] {
+        board.load_position(Some(UciFen(p.fen.clone())), Vec::new());
+
+        for depth in 1..=max_depth {
+            board.perft_zobrist(depth, &p.fen, depth);
+        }
+    }
+    println!("Test successful!");
+}
+
 #[derive(Default, Clone, Debug)]
 struct PerftResult {
     m: Move,
@@ -240,6 +263,43 @@ impl Board {
         result
     }
 
+    fn perft_zobrist(&mut self, depth: u16, fen: &str, max_depth: u16) {
+        if depth == 0 {
+            return;
+        }
+        for m in self.generate_moves() {
+            let zobrist = self.zobrist_hash;
+            self.make_move(m);
+            self.perft_zobrist(depth - 1, fen, max_depth);
+            self.unmake_move(m);
+            if self.zobrist_hash != zobrist {
+                eprintln!("Zobrist not matching: {m}");
+                eprintln!("Debug command:");
+                eprintln!("cargo run --release -- perft {max_depth} --fen \"{fen}\" --zobrist");
+                self.print();
+                for i in 0..self.zobrist_values.len() {
+                    if self.zobrist_hash ^ self.zobrist_values[i] == zobrist {
+                        eprintln!("self.zobrist_hash ^ self.zobrist_values[{i}] == expected");
+                        panic!();
+                    }
+                }
+                for i in 0..self.zobrist_values.len() {
+                    for j in 0..self.zobrist_values.len() {
+                        if self.zobrist_hash ^ self.zobrist_values[i] ^ self.zobrist_values[j]
+                            == zobrist
+                        {
+                            eprintln!(
+                                "self.zobrist_hash ^ self.zobrist_values[{i}] ^ self.zobrist_values[{j}] == expected"
+                            );
+                            panic!();
+                        }
+                    }
+                }
+                panic!();
+            }
+        }
+    }
+
     fn difference(&mut self, perft: PerftResult, stockfish: PerftResult, fen: &str, depth: u16) {
         for perft_result in &perft.results {
             let PerftResult { m, nodes, .. } = perft_result;
@@ -248,7 +308,7 @@ impl Board {
                 self.print();
                 println!("{m}");
                 println!("Debug command:");
-                println!("cargo run -- perft {depth} --fen \"{fen}\"");
+                println!("cargo run --release -- perft {depth} --fen \"{fen}\"");
                 panic!();
             }
             if stockfish.get(*m).unwrap().nodes != *nodes {
@@ -266,7 +326,7 @@ impl Board {
                 self.print();
                 println!("{m}");
                 println!("Debug command:");
-                println!("cargo run -- perft {depth} --fen \"{fen}\"");
+                println!("cargo run --release -- perft {depth} --fen \"{fen}\"");
                 panic!();
             }
             if perft.get(*m).unwrap().nodes != *nodes {

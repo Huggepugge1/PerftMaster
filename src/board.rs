@@ -142,7 +142,7 @@ pub struct Board {
     pub game_stack: Vec<IrreversibleAspects>,
 
     pub zobrist_hash: u64,
-    // Pieces (768) | Side to move (1) | Castling Rights (4) | En Passant (8)
+    // Pieces (0..768) | Side to move (768..769) | Castling Rights (769..773) | En Passant (773..781)
     pub zobrist_values: [u64; 781],
 }
 
@@ -400,26 +400,7 @@ impl Board {
 
             // If a rook is captured, remove castling_rights
             if to_piece.kind == PieceKind::Rook {
-                match to {
-                    0 => {
-                        self.castling_rights &= 0b1011;
-                        self.zobrist_hash ^= self.zobrist_values[770];
-                    }
-                    7 => {
-                        self.castling_rights &= 0b0111;
-
-                        self.zobrist_hash ^= self.zobrist_values[769];
-                    }
-                    56 => {
-                        self.castling_rights &= 0b1110;
-                        self.zobrist_hash ^= self.zobrist_values[772];
-                    }
-                    63 => {
-                        self.castling_rights &= 0b1101;
-                        self.zobrist_hash ^= self.zobrist_values[771];
-                    }
-                    _ => (),
-                }
+                self.modify_castling_rights_from_rook(to);
             }
 
         // En passant
@@ -428,12 +409,13 @@ impl Board {
             irreversible_aspects.capture = ep_piece;
             self.toggle_piece(ep_piece, self.ep - self.turn);
         }
+        if self.ep != -1 {
+            self.zobrist_hash ^= self.zobrist_values[773 + (self.ep % 8) as usize];
+            self.ep = -1;
+        }
         if m.is_double_push() {
             self.ep = to - self.turn;
             self.zobrist_hash ^= self.zobrist_values[773 + (self.ep % 8) as usize];
-        } else if self.ep != -1 {
-            self.zobrist_hash ^= self.zobrist_values[773 + (self.ep % 8) as usize];
-            self.ep = -1;
         }
 
         // Promotion
@@ -447,14 +429,24 @@ impl Board {
             self.toggle_castle(m, from);
             match self.turn {
                 Color::White => {
-                    self.castling_rights &= 0b0011;
-                    self.zobrist_hash ^= self.zobrist_values[769];
-                    self.zobrist_hash ^= self.zobrist_values[770];
+                    if self.castling_rights & 0b1000 > 0 {
+                        self.castling_rights &= 0b0111;
+                        self.zobrist_hash ^= self.zobrist_values[769];
+                    }
+                    if self.castling_rights & 0b0100 > 0 {
+                        self.castling_rights &= 0b1011;
+                        self.zobrist_hash ^= self.zobrist_values[770];
+                    }
                 }
                 Color::Black => {
-                    self.castling_rights &= 0b1100;
-                    self.zobrist_hash ^= self.zobrist_values[771];
-                    self.zobrist_hash ^= self.zobrist_values[772];
+                    if self.castling_rights & 0b0010 > 0 {
+                        self.castling_rights &= 0b1101;
+                        self.zobrist_hash ^= self.zobrist_values[771];
+                    }
+                    if self.castling_rights & 0b0001 > 0 {
+                        self.castling_rights &= 0b1110;
+                        self.zobrist_hash ^= self.zobrist_values[772];
+                    }
                 }
                 Color::None => unreachable!(),
             }
@@ -464,14 +456,24 @@ impl Board {
         if from_piece.kind == PieceKind::King {
             match self.turn {
                 Color::White => {
-                    self.castling_rights &= 0b0011;
-                    self.zobrist_hash ^= self.zobrist_values[769];
-                    self.zobrist_hash ^= self.zobrist_values[770];
+                    if self.castling_rights & 0b1000 > 0 {
+                        self.castling_rights &= 0b0111;
+                        self.zobrist_hash ^= self.zobrist_values[769];
+                    }
+                    if self.castling_rights & 0b0100 > 0 {
+                        self.castling_rights &= 0b1011;
+                        self.zobrist_hash ^= self.zobrist_values[770];
+                    }
                 }
                 Color::Black => {
-                    self.castling_rights &= 0b1100;
-                    self.zobrist_hash ^= self.zobrist_values[771];
-                    self.zobrist_hash ^= self.zobrist_values[772];
+                    if self.castling_rights & 0b0010 > 0 {
+                        self.castling_rights &= 0b1101;
+                        self.zobrist_hash ^= self.zobrist_values[771];
+                    }
+                    if self.castling_rights & 0b0001 > 0 {
+                        self.castling_rights &= 0b1110;
+                        self.zobrist_hash ^= self.zobrist_values[772];
+                    }
                 }
                 Color::None => unreachable!(),
             }
@@ -479,26 +481,7 @@ impl Board {
 
         // Rook moves
         if from_piece.kind == PieceKind::Rook {
-            match from {
-                0 => {
-                    self.castling_rights &= 0b1011;
-                    self.zobrist_hash ^= self.zobrist_values[770];
-                }
-                7 => {
-                    self.castling_rights &= 0b0111;
-
-                    self.zobrist_hash ^= self.zobrist_values[769];
-                }
-                56 => {
-                    self.castling_rights &= 0b1110;
-                    self.zobrist_hash ^= self.zobrist_values[772];
-                }
-                63 => {
-                    self.castling_rights &= 0b1101;
-                    self.zobrist_hash ^= self.zobrist_values[771];
-                }
-                _ => (),
-            }
+            self.modify_castling_rights_from_rook(from);
         }
 
         if m.is_quiet() {
@@ -532,13 +515,17 @@ impl Board {
         }
 
         if self.castling_rights != castling_rights {
-            if (self.castling_rights ^ castling_rights) & 0b1000 > 0 {
+            let modified = self.castling_rights ^ castling_rights;
+            if modified & 0b1000 > 0 {
                 self.zobrist_hash ^= self.zobrist_values[769];
-            } else if (self.castling_rights ^ castling_rights) & 0b0100 > 0 {
+            }
+            if modified & 0b0100 > 0 {
                 self.zobrist_hash ^= self.zobrist_values[770];
-            } else if (self.castling_rights ^ castling_rights) & 0b0010 > 0 {
+            }
+            if modified & 0b0010 > 0 {
                 self.zobrist_hash ^= self.zobrist_values[771];
-            } else if (self.castling_rights ^ castling_rights) & 0b0001 > 0 {
+            }
+            if modified & 0b0001 > 0 {
                 self.zobrist_hash ^= self.zobrist_values[772];
             }
         }
@@ -663,6 +650,36 @@ impl Board {
         }
     }
 
+    fn modify_castling_rights_from_rook(&mut self, from: i16) {
+        match from {
+            0 => {
+                if self.castling_rights & 0b0100 > 0 {
+                    self.castling_rights &= 0b1011;
+                    self.zobrist_hash ^= self.zobrist_values[770];
+                }
+            }
+            7 => {
+                if self.castling_rights & 0b1000 > 0 {
+                    self.castling_rights &= 0b0111;
+                    self.zobrist_hash ^= self.zobrist_values[769];
+                }
+            }
+            56 => {
+                if self.castling_rights & 0b0001 > 0 {
+                    self.castling_rights &= 0b1110;
+                    self.zobrist_hash ^= self.zobrist_values[772];
+                }
+            }
+            63 => {
+                if self.castling_rights & 0b0010 > 0 {
+                    self.castling_rights &= 0b1101;
+                    self.zobrist_hash ^= self.zobrist_values[771];
+                }
+            }
+            _ => (),
+        }
+    }
+
     pub fn change_turn(&mut self) {
         if self.turn == Color::White {
             self.turn = Color::Black;
@@ -742,42 +759,5 @@ pub fn piece_to_ascii(piece: Piece) -> char {
         Color::White => chr.to_ascii_uppercase(),
         Color::Black => chr,
         Color::None => chr,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{board, r#move::Move};
-
-    #[test]
-    fn test_zobrist_startpos_double_push() {
-        let mut board = board::Board::default();
-        board.load_position(None, Vec::new());
-        let m = Move::new(9, 25, 1);
-        let zobrist = board.zobrist_hash;
-        board.make_move(m);
-        board.unmake_move(m);
-        assert_eq!(zobrist, board.zobrist_hash);
-    }
-
-    #[test]
-    fn test_zobrist_en_passant() {
-        let mut board = board::Board::default();
-        board.load_position(None, Vec::new());
-        let m1 = Move::new(8, 24, 1);
-        let m2 = Move::new(48, 40, 0);
-        let m3 = Move::new(24, 32, 0);
-        let m4 = Move::new(49, 33, 1);
-        let m5 = Move::new(32, 41, 0b0101);
-
-        board.make_move(m1);
-        board.make_move(m2);
-        board.make_move(m3);
-        board.make_move(m4);
-
-        let zobrist = board.zobrist_hash;
-        board.make_move(m5);
-        board.unmake_move(m5);
-        assert_eq!(zobrist, board.zobrist_hash)
     }
 }

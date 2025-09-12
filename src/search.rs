@@ -1,6 +1,5 @@
 use std::{
     cmp::Ordering,
-    collections::HashMap,
     sync::{Arc, RwLock, mpsc::channel},
     thread::{self, sleep},
     time::{Duration, Instant},
@@ -78,8 +77,7 @@ impl Board {
     fn material_scores(&self) -> i64 {
         let mut score = 0;
         for square in 0..64 {
-            let piece = self.get_piece(square);
-            score += piece.score();
+            score += self.get_piece(square).score();
         }
         score
     }
@@ -150,32 +148,10 @@ impl Board {
         score
     }
 
-    fn moves_scores(&mut self) -> i64 {
-        let moves = self.generate_moves();
-        (if moves.is_empty() {
-            self.change_turn();
-            let king_under_attack =
-                self.king_under_attack((self.opponent_pieces() & self.kings).pop_lsb().unwrap());
-            self.change_turn();
-            if king_under_attack {
-                -Search::BIG_NUM
-            } else {
-                500
-            }
-        } else {
-            moves.len().isqrt() as i64 * 10
-        }) * match self.turn {
-            Color::White => 1,
-            Color::Black => -1,
-            Color::None => unreachable!(),
-        }
-    }
-
     fn eval(&mut self) -> i64 {
         let mut score = 0;
         score += self.material_scores();
         score += self.square_table_scores();
-        score += self.moves_scores();
         score
             * match self.turn {
                 Color::White => 1,
@@ -190,9 +166,6 @@ pub struct Search {
     pub best_move: Move,
     depth: usize,
 
-    tt: HashMap<u64, (usize, i64)>,
-
-    hits: usize,
     nodes: usize,
 
     score: i64,
@@ -210,9 +183,6 @@ impl Search {
             best_move: Move::default(),
             depth: 0,
 
-            tt: HashMap::new(),
-
-            hits: 0,
             nodes: 0,
 
             score: 0,
@@ -253,16 +223,15 @@ impl Search {
                     }
                 });
                 let mut depth = 1;
-                while *search.stopper.read().unwrap() != Status::Stopping {
+                while *search.stopper.read().unwrap() != Status::Stopping && depth < 50 {
                     search.depth = depth;
                     search.score = search.negamax(board, search.depth, alpha, beta);
                     println!(
-                        "info depth {} score cp {} nodes {} nps {} tthits {} best {}",
+                        "info depth {} score cp {} nodes {} nps {} pv {}",
                         search.depth,
-                        search.score,
+                        search.score * -1,
                         search.nodes,
                         (search.nodes as f64 / search.start.elapsed().as_secs_f64()) as u64,
-                        search.hits,
                         search.best_move,
                     );
                     depth += 1;
@@ -272,7 +241,7 @@ impl Search {
                 return search;
             }
         }
-        let max_depth = 5;
+        let max_depth = 4;
         for i in 1..=max_depth {
             search.depth = i;
             search.negamax(board, search.depth, alpha, beta);
@@ -280,7 +249,7 @@ impl Search {
         search
     }
 
-    fn mvv_lva(&self, board: &Board, a: Move, b: Move) -> Ordering {
+    fn mvv_lva(&mut self, board: &Board, a: Move, b: Move) -> Ordering {
         if a == self.best_move {
             Ordering::Less
         } else if b == self.best_move {
@@ -350,12 +319,6 @@ impl Search {
 
     fn negamax(&mut self, board: &mut Board, depth: usize, mut alpha: i64, beta: i64) -> i64 {
         self.nodes += 1;
-        if let Some((tt_depth, score)) = self.tt.get(&board.zobrist_hash)
-            && depth <= *tt_depth
-        {
-            self.hits += 1;
-            return *score;
-        }
         if *self.stopper.read().unwrap() == Status::Stopping {
             return Self::BIG_NUM;
         }
@@ -389,15 +352,11 @@ impl Search {
                 board.king_under_attack((board.opponent_pieces() & board.kings).pop_lsb().unwrap());
             board.change_turn();
             if king_under_attack {
-                let score = -Search::BIG_NUM + (self.depth - depth) as i64;
-                self.tt.insert(board.zobrist_hash, (depth, score));
-                score
+                -Search::BIG_NUM + (self.depth - depth) as i64
             } else {
-                self.tt.insert(board.zobrist_hash, (depth, 500));
                 500
             }
         } else {
-            self.tt.insert(board.zobrist_hash, (depth, best));
             best
         }
     }

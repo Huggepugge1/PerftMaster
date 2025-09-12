@@ -1,19 +1,19 @@
 {
     "resign": {
         "move_count": 1,
-        "score": 0,
+        "score": 100000000,
         "twosided": false,
-        "enabled": false
+        "enabled": true
     },
     "draw": {
         "move_number": 0,
         "move_count": 1,
         "score": 0,
-        "enabled": false
+        "enabled": true
     },
     "maxmoves": {
-        "move_count": 1,
-        "enabled": false
+        "move_count": 10000,
+        "enabled": true
     },
     "tb_adjudication": {
         "syzygy_dirs": "",
@@ -58,7 +58,7 @@
     },
     "config_name": "config.json",
     "output": 0,
-    "seed": 11254339434861891169,
+    "seed": 16361737517710797276,
     "variant": 0,
     "type": 0,
     "gauntlet_seeds": 1,
@@ -70,7 +70,7 @@
     "rounds": 100,
     "concurrency": 16,
     "force_concurrency": false,
-    "recover": true,
+    "recover": false,
     "noswap": false,
     "reverse": false,
     "report_penta": true,
@@ -85,7 +85,7 @@
     },
     "engines": [
         {
-            "name": "perftmaster-v0.5.0",
+            "name": "perftmaster-v0.6.0",
             "dir": "",
             "cmd": "target/release/perftmaster",
             "args": "",
@@ -105,9 +105,9 @@
             "variant": 0
         },
         {
-            "name": "perftmaster-v0.4.0",
+            "name": "perftmaster-v0.1.0",
             "dir": "",
-            "cmd": "binaries/v4",
+            "cmd": "binaries/v1",
             "args": "",
             "restart": false,
             "options": [],
@@ -126,25 +126,25 @@
         }
     ],
     "stats": {
-        "perftmaster-v0.4.0 vs perftmaster-v0.5.0": {
+        "perftmaster-v0.1.0 vs perftmaster-v0.6.0": {
             "wins": 0,
-            "losses": 46,
-            "draws": 8,
+            "losses": 0,
+            "draws": 20,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
-            "penta_DD": 0,
-            "penta_LD": 8,
-            "penta_LL": 19
+            "penta_DD": 10,
+            "penta_LD": 0,
+            "penta_LL": 0
         },
-        "perftmaster-v0.5.0 vs perftmaster-v0.4.0": {
-            "wins": 51,
+        "perftmaster-v0.6.0 vs perftmaster-v0.1.0": {
+            "wins": 0,
             "losses": 0,
-            "draws": 3,
-            "penta_WW": 24,
-            "penta_WD": 3,
+            "draws": 38,
+            "penta_WW": 0,
+            "penta_WD": 0,
             "penta_WL": 0,
-            "penta_DD": 0,
+            "penta_DD": 19,
             "penta_LD": 0,
             "penta_LL": 0
         }

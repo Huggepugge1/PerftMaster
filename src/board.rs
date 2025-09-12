@@ -79,14 +79,10 @@ pub struct Piece {
 }
 
 impl Piece {
-    const NONE: Self = Self {
+    pub const NONE: Self = Self {
         color: Color::None,
         kind: PieceKind::None,
     };
-
-    pub fn new() -> Self {
-        Self::default()
-    }
 
     pub fn value(self) -> i64 {
         match self.kind {
@@ -386,7 +382,7 @@ impl Board {
 
     pub fn make_move(&mut self, m: Move) {
         let mut irreversible_aspects = IrreversibleAspects {
-            capture: Piece::new(),
+            capture: Piece::NONE,
             ep: self.ep,
             half_move_clock: self.half_move_clock,
             castling_rights: self.castling_rights,

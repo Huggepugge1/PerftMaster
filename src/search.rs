@@ -86,7 +86,7 @@ impl Board {
         let mut score = 0;
         for square in 0..64 {
             let piece = self.get_piece(square);
-            if piece != Piece::new() {
+            if piece != Piece::NONE {
                 score += match piece {
                     Piece {
                         color: Color::White,

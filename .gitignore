@@ -1,6 +1,5 @@
 /target
-/chess-position-generator
-/cutechess
+/chess-position-generator/venv
 
 info.log
 log.pgn

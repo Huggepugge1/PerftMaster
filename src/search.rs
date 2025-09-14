@@ -258,7 +258,7 @@ impl Search {
                 return search;
             }
         }
-        let max_depth = 4;
+        let max_depth = 6;
         for i in 1..=max_depth {
             search.depth = i;
             search.negamax(board, search.depth, alpha, beta);

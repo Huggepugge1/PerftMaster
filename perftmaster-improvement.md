@@ -47,3 +47,12 @@ Implemented transposition tables as well as some general improvements
 ### Performance
 perft-speed: ~5M nodes/s
 Elo: 524.10 +/- 93.16 (Against v4)
+
+## Version 0.6.0
+### Whats changed
+Mostly better move generation
+
+### Performance
+#### At this point, random does not score a single draw
+perft-speed: ~30M nodes/s
+Elo: 61.4 +/- 27.4 (Against v5)

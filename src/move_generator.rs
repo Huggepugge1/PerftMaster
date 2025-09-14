@@ -243,6 +243,7 @@ struct MoveGenerator<'a> {
     pinned: Bitboard,
 }
 
+#[derive(Debug)]
 pub struct MoveGeneratorResult {
     pub moves: [Move; 218],
     pub in_check: bool,

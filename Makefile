@@ -8,9 +8,9 @@ build:
 OPENINGS=file=openings/8moves_v3.pgn
 TC=inf/10+0.1
 
-ENGINE1=binaries/v6
+ENGINE1=target/release/perftmaster
 
-ENGINE2=binaries/v1
+ENGINE2=binaries/v6
 
 SHARED_ENGINE_OPTIONS=proto=uci tc=$(TC)
 

@@ -112,7 +112,7 @@ pub enum CastleKind {
     None,
 }
 
-#[derive(Default, Clone, PartialEq, Eq)]
+#[derive(Default, Clone, PartialEq, Eq, Debug)]
 pub struct IrreversibleAspects {
     capture: Piece,
     half_move_clock: u16,
@@ -120,7 +120,7 @@ pub struct IrreversibleAspects {
     castling_rights: u8,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Board {
     pub white_pieces: Bitboard,
     pub black_pieces: Bitboard,
@@ -718,19 +718,38 @@ impl Board {
         Piece { color, kind }
     }
 
+    #[allow(dead_code)]
     pub fn print(&self) {
-        println!(" --- --- --- --- --- --- --- ---");
+        let mut string = String::new();
+        string += " --- --- --- --- --- --- --- ---\n";
         for i in 0..8 {
-            print!("|");
+            string += "|";
             for j in 0..8 {
-                print!(
+                string += &format!(
                     " {} |",
                     piece_to_ascii(self.get_piece(63 - ((i * 8) + (7 - j))))
                 );
             }
-            println!();
-            println!(" --- --- --- --- --- --- --- ---");
+            string += "\n --- --- --- --- --- --- --- ---\n";
         }
+        println!("{string}");
+    }
+
+    #[allow(dead_code)]
+    pub fn eprint(&self) {
+        let mut string = String::new();
+        string += " --- --- --- --- --- --- --- ---\n";
+        for i in 0..8 {
+            string += "|";
+            for j in 0..8 {
+                string += &format!(
+                    " {} |\n",
+                    piece_to_ascii(self.get_piece(63 - ((i * 8) + (7 - j))))
+                );
+            }
+            string += " --- --- --- --- --- --- --- ---";
+        }
+        eprintln!("{string}");
     }
 
     fn clean_board(&mut self) {

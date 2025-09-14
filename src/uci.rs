@@ -29,7 +29,7 @@ pub fn run() {
                     println!(
                         "{}",
                         UciMessage::Id {
-                            name: Some(String::from("Perftmaster v0.6.0")),
+                            name: Some(String::from("Perftmaster v0.7.0")),
                             author: Some(String::from("Hugo Lindström")),
                         }
                         .serialize()
@@ -39,7 +39,11 @@ pub fn run() {
 
                 UciMessage::IsReady => println!("{}", UciMessage::ReadyOk.serialize()),
 
-                UciMessage::Go { time_control, .. } => {
+                UciMessage::Go {
+                    time_control,
+                    search_control,
+                    ..
+                } => {
                     *stopper.write().expect("Failed to start the search") = Status::Go;
                     let mut board = board.clone();
                     let stopper = stopper.clone();
@@ -47,9 +51,14 @@ pub fn run() {
                         println!(
                             "{}",
                             UciMessage::BestMove {
-                                best_move: Search::go(&mut board, time_control, stopper.clone())
-                                    .best_move
-                                    .as_ucimove(),
+                                best_move: Search::go(
+                                    &mut board,
+                                    search_control,
+                                    time_control,
+                                    stopper.clone()
+                                )
+                                .best_move
+                                .as_ucimove(),
                                 ponder: None,
                             }
                         );

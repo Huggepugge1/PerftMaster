@@ -3,6 +3,7 @@ mod r#move;
 mod move_generator;
 mod perft;
 mod search;
+mod search_test;
 mod uci;
 
 use clap::{Parser, Subcommand};
@@ -18,13 +19,19 @@ struct Args {
 #[derive(Subcommand)]
 enum Command {
     Perft {
-        depth: u16,
+        depth: u8,
 
         #[arg(long)]
         fen: Option<String>,
 
         #[arg(long, short)]
         zobrist: bool,
+    },
+    Search {
+        depth: u8,
+
+        #[arg(long)]
+        fen: Option<String>,
     },
 }
 
@@ -40,6 +47,7 @@ fn main() {
             false => perft::perft_test(depth, fen),
             true => perft::zobrist_test(depth, fen),
         },
+        Some(Command::Search { depth, fen }) => search_test::search_test(depth, fen),
         None => uci::run(),
     }
 }

@@ -11,12 +11,12 @@ use std::{
 };
 
 #[derive(Deserialize, Debug)]
-struct Position {
-    fen: String,
-    depths: HashMap<u16, HashMap<String, usize>>,
+pub struct Position {
+    pub fen: String,
+    pub depths: HashMap<u8, HashMap<String, usize>>,
 }
 
-pub fn perft_test(max_depth: u16, fen: Option<String>) {
+pub fn perft_test(max_depth: u8, fen: Option<String>) {
     let mut board = Board::new();
 
     if let Some(fen) = fen {
@@ -56,7 +56,7 @@ pub fn perft_test(max_depth: u16, fen: Option<String>) {
     println!("Test successful!");
 }
 
-pub fn zobrist_test(max_depth: u16, fen: Option<String>) {
+pub fn zobrist_test(max_depth: u8, fen: Option<String>) {
     let mut board = Board::new();
 
     if let Some(fen) = fen {
@@ -171,7 +171,7 @@ fn setup_stockfish() -> Child {
     stockfish
 }
 
-fn stockfish_perft(depth: u16, fen: &str, moves: Vec<Move>, stockfish: &mut Child) -> PerftResult {
+fn stockfish_perft(depth: u8, fen: &str, moves: Vec<Move>, stockfish: &mut Child) -> PerftResult {
     if depth == 0 {
         return PerftResult {
             m: *moves.last().unwrap(),
@@ -243,7 +243,7 @@ fn quit_stockfish(stockfish: &mut Child) {
 }
 
 impl Board {
-    fn perft(&mut self, depth: u16, m: Move) -> PerftResult {
+    fn perft(&mut self, depth: u8, m: Move) -> PerftResult {
         if depth == 0 {
             return PerftResult {
                 m,
@@ -263,7 +263,7 @@ impl Board {
         result
     }
 
-    fn perft_zobrist(&mut self, depth: u16, fen: &str, max_depth: u16) {
+    fn perft_zobrist(&mut self, depth: u8, fen: &str, max_depth: u8) {
         if depth == 0 {
             return;
         }
@@ -300,7 +300,7 @@ impl Board {
         }
     }
 
-    fn difference(&mut self, perft: PerftResult, stockfish: PerftResult, fen: &str, depth: u16) {
+    fn difference(&mut self, perft: PerftResult, stockfish: PerftResult, fen: &str, depth: u8) {
         for perft_result in &perft.results {
             let PerftResult { m, nodes, .. } = perft_result;
             if !stockfish.contains_move(*m) {

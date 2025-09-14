@@ -10,7 +10,6 @@ use vampirc_uci::UciTimeControl;
 use crate::{
     board::{Board, Color, Piece, PieceKind},
     r#move::Move,
-    move_generator::Bitops,
     uci::Status,
 };
 
@@ -148,10 +147,28 @@ impl Board {
         score
     }
 
+    fn moves_scores(&mut self) -> i64 {
+        let moves = self.generate_moves();
+        (if moves.is_empty() {
+            if moves.in_check {
+                -Search::BIG_NUM
+            } else {
+                500
+            }
+        } else {
+            moves.len.isqrt() as i64 * 10
+        }) * match self.turn {
+            Color::White => 1,
+            Color::Black => -1,
+            Color::None => unreachable!(),
+        }
+    }
+
     fn eval(&mut self) -> i64 {
         let mut score = 0;
         score += self.material_scores();
         score += self.square_table_scores();
+        score += self.moves_scores();
         score
             * match self.turn {
                 Color::White => 1,
@@ -288,14 +305,9 @@ impl Search {
             alpha = best;
         }
 
-        let mut moves = board
-            .generate_moves()
-            .iter()
-            .filter(|e| e.is_capture())
-            .cloned()
-            .collect::<Vec<_>>();
-
+        let mut moves = board.generate_moves().filter(|e| e.is_capture());
         moves.sort_by(|a, b| self.mvv_lva(board, *a, *b));
+
         for m in moves {
             if !m.is_capture() {
                 continue;
@@ -327,6 +339,7 @@ impl Search {
         }
         let mut best = -i64::MAX;
         let mut moves = board.generate_moves();
+        let in_check = moves.in_check;
         moves.sort_by(|a, b| self.mvv_lva(board, *a, *b));
         for m in moves {
             board.make_move(m);
@@ -347,11 +360,7 @@ impl Search {
         }
 
         if best == -Self::BIG_NUM {
-            board.change_turn();
-            let king_under_attack =
-                board.king_under_attack((board.opponent_pieces() & board.kings).pop_lsb().unwrap());
-            board.change_turn();
-            if king_under_attack {
+            if in_check {
                 -Search::BIG_NUM + (self.depth - depth) as i64
             } else {
                 500

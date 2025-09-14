@@ -35,7 +35,7 @@ pub fn perft_test(max_depth: u16, fen: Option<String>) {
 
     let mut total = 0;
 
-    for p in &positions[0..100] {
+    for p in &positions {
         board.load_position(Some(UciFen(p.fen.clone())), Vec::new());
 
         for (depth, stockfish_result) in p.depths.clone() {
@@ -200,7 +200,7 @@ fn stockfish_perft(depth: u16, fen: &str, moves: Vec<Move>, stockfish: &mut Chil
 
     let string_perft = read_until(stockfish, "Nodes searched:")
         .split("\n")
-        .filter(|e| e != &"")
+        .filter(|e| e != &"" && !e.starts_with(&"info"))
         .map(String::from)
         .collect::<Vec<_>>();
 

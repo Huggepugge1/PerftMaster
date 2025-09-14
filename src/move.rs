@@ -1,6 +1,6 @@
 use vampirc_uci::{UciMove, UciPiece, UciSquare};
 
-use crate::board::{AsSquare, Bitmap, Board, CastleKind, PieceKind, Square, ToSquare};
+use crate::board::{AsSquare, Bitboard, Board, CastleKind, PieceKind, Square, ToSquare};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Move(pub Square);
@@ -165,7 +165,7 @@ impl Move {
         Move(self.to() | (self.from() << 6) | (self.flags() << 12))
     }
 
-    pub fn bitmap(&self) -> Bitmap {
+    pub fn bitmap(&self) -> Bitboard {
         (1 << self.from()) | (1 << self.to())
     }
 

@@ -2,7 +2,7 @@ use vampirc_uci::{UciFen, uci::UciMove};
 
 use crate::r#move::Move;
 
-pub type Bitmap = u64;
+pub type Bitboard = u64;
 pub type Square = i16;
 
 pub trait AsSquare {
@@ -122,15 +122,15 @@ pub struct IrreversibleAspects {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Board {
-    pub white_pieces: Bitmap,
-    pub black_pieces: Bitmap,
+    pub white_pieces: Bitboard,
+    pub black_pieces: Bitboard,
 
-    pub pawns: Bitmap,
-    pub rooks: Bitmap,
-    pub knights: Bitmap,
-    pub bishops: Bitmap,
-    pub queens: Bitmap,
-    pub kings: Bitmap,
+    pub pawns: Bitboard,
+    pub rooks: Bitboard,
+    pub knights: Bitboard,
+    pub bishops: Bitboard,
+    pub queens: Bitboard,
+    pub kings: Bitboard,
 
     pub ep: Square,
     pub half_move_clock: u16,
@@ -183,7 +183,7 @@ impl Board {
 
     pub fn new_game(&mut self) {}
 
-    pub fn own_pieces(&self) -> Bitmap {
+    pub fn own_pieces(&self) -> Bitboard {
         match self.turn {
             Color::White => self.white_pieces,
             Color::Black => self.black_pieces,
@@ -191,7 +191,7 @@ impl Board {
         }
     }
 
-    pub fn opponent_pieces(&self) -> Bitmap {
+    pub fn opponent_pieces(&self) -> Bitboard {
         match self.turn {
             Color::White => self.black_pieces,
             Color::Black => self.white_pieces,

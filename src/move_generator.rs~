@@ -229,7 +229,7 @@ fn get_negative_ray_attacks(square: Square, dir: Dir, occupied: Bitboard) -> Bit
 }
 
 impl Board {
-    pub fn generate_moves(&mut self) -> MoveGeneratorResult {
+    pub fn generate_moves(&mut self) -> Vec<Move> {
         MoveGenerator::generate_moves(self)
     }
 }
@@ -243,84 +243,8 @@ struct MoveGenerator<'a> {
     pinned: Bitboard,
 }
 
-pub struct MoveGeneratorResult {
-    pub moves: [Move; 218],
-    pub in_check: bool,
-
-    pub len: usize,
-    index: usize,
-}
-
-impl MoveGeneratorResult {
-    fn push(&mut self, m: Move) {
-        self.moves[self.len] = m;
-        self.len += 1;
-    }
-
-    fn append(&mut self, moves: &[Move]) {
-        for m in moves {
-            self.moves[self.len] = *m;
-            self.len += 1;
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    pub fn filter<P>(self, p: P) -> Self
-    where
-        P: Fn(&Move) -> bool,
-    {
-        let mut moves = MoveGeneratorResult {
-            moves: [Move::NULL; 218],
-
-            in_check: self.in_check,
-
-            len: 0,
-            index: 0,
-        };
-
-        for m in self {
-            if p(&m) {
-                moves.push(m);
-            }
-        }
-
-        moves
-    }
-
-    pub fn sort_by<F>(&mut self, mut b: F)
-    where
-        F: FnMut(&Move, &Move) -> std::cmp::Ordering,
-    {
-        for i in 0..self.len {
-            for j in i + 1..self.len {
-                if b(&self.moves[i], &self.moves[j]) == std::cmp::Ordering::Greater {
-                    let x = self.moves[i];
-                    self.moves[i] = self.moves[j];
-                    self.moves[j] = x;
-                }
-            }
-        }
-    }
-}
-
-impl Iterator for MoveGeneratorResult {
-    type Item = Move;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.index += 1;
-        if self.index <= self.len {
-            Some(self.moves[self.index - 1])
-        } else {
-            None
-        }
-    }
-}
-
 impl<'a> MoveGenerator<'a> {
-    fn generate_moves(board: &mut Board) -> MoveGeneratorResult {
+    fn generate_moves(board: &mut Board) -> Vec<Move> {
         let mut move_generator = MoveGenerator {
             board: board,
 
@@ -335,13 +259,7 @@ impl<'a> MoveGenerator<'a> {
         move_generator.get_block_ray();
         move_generator.get_pinned();
 
-        let mut moves = MoveGeneratorResult {
-            moves: [Move::NULL; 218],
-            in_check: move_generator.checkers > 0,
-
-            len: 0,
-            index: 0,
-        };
+        let mut moves = Vec::new();
 
         if move_generator.checkers.count_ones() != 2 {
             move_generator.generate_pawn_moves(&mut moves);
@@ -480,7 +398,7 @@ impl<'a> MoveGenerator<'a> {
         return attack_fn(from, dir, occupied ^ blockers);
     }
 
-    fn generate_pawn_moves(&mut self, moves: &mut MoveGeneratorResult) {
+    fn generate_pawn_moves(&mut self, moves: &mut Vec<Move>) {
         match self.board.turn {
             Color::White => self.generate_white_pawn_moves(moves),
             Color::Black => self.generate_black_pawn_moves(moves),
@@ -488,7 +406,7 @@ impl<'a> MoveGenerator<'a> {
         }
     }
 
-    fn generate_white_pawn_moves(&mut self, moves: &mut MoveGeneratorResult) {
+    fn generate_white_pawn_moves(&mut self, moves: &mut Vec<Move>) {
         let mut pawns = self.board.pawns & self.board.white_pieces;
         let blockers = self.board.white_pieces | self.board.black_pieces;
         let free = !blockers;
@@ -539,7 +457,7 @@ impl<'a> MoveGenerator<'a> {
         }
     }
 
-    fn white_pawn_en_passant(&mut self, bitboard: &mut Bitboard, from: Square) {
+    fn white_pawn_en_passant(&mut self, bitboard: &mut u64, from: i16) {
         let king_square = (self.board.kings & self.board.white_pieces)
             .pop_lsb()
             .expect("No king found");
@@ -554,17 +472,7 @@ impl<'a> MoveGenerator<'a> {
                         dir,
                         (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from - 1,
                     ) & self.board.black_pieces
-                        & (self.board.rooks | self.board.queens)
-                        == 0
-                {
-                    *bitboard |= 1 << from + 7;
-                } else if dir.to_square() < 0
-                    && get_negative_ray_attacks(
-                        king_square,
-                        dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from - 1,
-                    ) & self.board.black_pieces
-                        & (self.board.rooks | self.board.queens)
+                        & (self.board.queens | self.board.rooks)
                         == 0
                 {
                     *bitboard |= 1 << from + 7;
@@ -591,16 +499,6 @@ impl<'a> MoveGenerator<'a> {
                         == 0
                 {
                     *bitboard |= 1 << from + 9;
-                } else if dir.to_square() < 0
-                    && get_negative_ray_attacks(
-                        king_square,
-                        dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from,
-                    ) & self.board.black_pieces
-                        & (self.board.queens | self.board.rooks)
-                        == 0
-                {
-                    *bitboard |= 1 << from + 9;
                 }
             } else {
                 *bitboard |= 1 << from + 9;
@@ -613,7 +511,7 @@ impl<'a> MoveGenerator<'a> {
             | (Bitboard::checked_shl(1, (from + 9) as u32).unwrap_or(0) & NOT_A_FILE)
     }
 
-    fn generate_black_pawn_moves(&mut self, moves: &mut MoveGeneratorResult) {
+    fn generate_black_pawn_moves(&mut self, moves: &mut Vec<Move>) {
         let mut pawns = self.board.pawns & self.board.black_pieces;
         let blockers = self.board.white_pieces | self.board.black_pieces;
         let free = !blockers;
@@ -640,7 +538,22 @@ impl<'a> MoveGenerator<'a> {
                 bitboard |= 1 << from - 16;
             }
             if self.board.ep != -1 {
-                self.black_pawn_en_passant(&mut bitboard, from);
+                if 1 << from - 7
+                    & (self.block_ray | self.checkers >> 8)
+                    & 1 << self.board.ep
+                    & NOT_A_FILE
+                    > 0
+                {
+                    bitboard |= 1 << from - 7;
+                }
+                if Bitboard::checked_shl(1, (from - 9) as u32).unwrap_or(0)
+                    & (self.block_ray | self.checkers >> 8)
+                    & 1 << self.board.ep
+                    & NOT_H_FILE
+                    > 0
+                {
+                    bitboard |= 1 << from - 9;
+                }
             }
 
             if 1 << from & self.pinned > 0 {
@@ -665,70 +578,58 @@ impl<'a> MoveGenerator<'a> {
     }
 
     fn black_pawn_en_passant(&mut self, bitboard: &mut u64, from: i16) {
-        let king_square = (self.board.kings & self.board.black_pieces)
+        let king_square = (self.board.kings & self.board.white_pieces)
             .pop_lsb()
             .expect("No king found");
-        if 1 << from - 7 & (self.block_ray | self.checkers >> 8) & 1 << self.board.ep & NOT_A_FILE
+        if 1 << from + 7 & (self.block_ray | self.checkers << 8) & 1 << self.board.ep & NOT_H_FILE
             > 0
         {
-            if king_square / 8 == 3 {
+            if king_square / 8 == 5 {
                 let dir = Dir::from_squares(king_square, from).unwrap();
                 if dir.to_square() > 0
                     && get_positive_ray_attacks(
                         king_square,
                         dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from,
-                    ) & self.board.white_pieces
-                        & (self.board.rooks | self.board.queens)
+                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from - 1,
+                    ) & self.board.black_pieces
+                        & (self.board.queens | self.board.rooks)
                         == 0
                 {
-                    *bitboard |= 1 << from - 7;
-                } else if dir.to_square() < 0
-                    && get_negative_ray_attacks(
-                        king_square,
-                        dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from,
-                    ) & self.board.white_pieces
-                        & (self.board.rooks | self.board.queens)
-                        == 0
+                    *bitboard |= 1 << from + 7;
+                } else if get_negative_ray_attacks(
+                    king_square,
+                    dir,
+                    (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from - 1,
+                ) & self.board.black_pieces
+                    & (self.board.queens | self.board.rooks)
+                    == 0
                 {
-                    *bitboard |= 1 << from - 7;
                 }
             } else {
-                *bitboard |= 1 << from - 7;
+                *bitboard |= 1 << from + 7;
             }
         }
-        if Bitboard::checked_shl(1, (from - 9) as u32).unwrap_or(0)
-            & (self.block_ray | self.checkers >> 8)
+        if Bitboard::checked_shl(1, (from + 9) as u32).unwrap_or(0)
+            & (self.block_ray | self.checkers << 8)
             & 1 << self.board.ep
-            & NOT_H_FILE
+            & NOT_A_FILE
             > 0
         {
-            if king_square / 8 == 3 {
+            if king_square / 8 == 4 {
                 let dir = Dir::from_squares(king_square, from).unwrap();
                 if dir.to_square() > 0
                     && get_positive_ray_attacks(
                         king_square,
                         dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from - 1,
-                    ) & self.board.white_pieces
-                        & (self.board.rooks | self.board.queens)
+                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from,
+                    ) & self.board.black_pieces
+                        & (self.board.queens | self.board.rooks)
                         == 0
                 {
-                    *bitboard |= 1 << from - 9;
-                } else if dir.to_square() < 0
-                    && get_negative_ray_attacks(
-                        king_square,
-                        dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from - 1,
-                    ) & self.board.white_pieces
-                        & (self.board.rooks | self.board.queens)
-                        == 0
-                {
-                    *bitboard |= 1 << from - 9;
+                    *bitboard |= 1 << from + 9;
                 }
             } else {
-                *bitboard |= 1 << from - 9;
+                *bitboard |= 1 << from + 9;
             }
         }
     }
@@ -738,7 +639,7 @@ impl<'a> MoveGenerator<'a> {
             | (Bitboard::checked_shl(1, (from - 9) as u32).unwrap_or(0) & NOT_H_FILE)
     }
 
-    fn generate_rook_moves(&mut self, moves: &mut MoveGeneratorResult) {
+    fn generate_rook_moves(&mut self, moves: &mut Vec<Move>) {
         let own = self.board.own_pieces();
         let opponent = self.board.opponent_pieces();
 
@@ -773,7 +674,7 @@ impl<'a> MoveGenerator<'a> {
             | get_negative_ray_attacks(from, Dir::South, occupied)
     }
 
-    fn generate_knight_moves(&mut self, moves: &mut MoveGeneratorResult) {
+    fn generate_knight_moves(&mut self, moves: &mut Vec<Move>) {
         let own = self.board.own_pieces();
         let opponent = self.board.opponent_pieces();
 
@@ -802,7 +703,7 @@ impl<'a> MoveGenerator<'a> {
             | (Bitboard::checked_shl(1, (from - 15) as u32).unwrap_or(0) & NOT_A_FILE)
     }
 
-    fn generate_bishop_moves(&mut self, moves: &mut MoveGeneratorResult) {
+    fn generate_bishop_moves(&mut self, moves: &mut Vec<Move>) {
         let own = self.board.own_pieces();
         let opponent = self.board.opponent_pieces();
 
@@ -836,7 +737,7 @@ impl<'a> MoveGenerator<'a> {
             | get_negative_ray_attacks(from, Dir::SouthWest, occupied)
     }
 
-    fn generate_queen_moves(&mut self, moves: &mut MoveGeneratorResult) {
+    fn generate_queen_moves(&mut self, moves: &mut Vec<Move>) {
         let own = self.board.own_pieces();
         let opponent = self.board.opponent_pieces();
 
@@ -875,7 +776,7 @@ impl<'a> MoveGenerator<'a> {
             | get_negative_ray_attacks(from, Dir::West, occupied)
     }
 
-    fn generate_king_moves(&mut self, moves: &mut MoveGeneratorResult) {
+    fn generate_king_moves(&mut self, moves: &mut Vec<Move>) {
         let own = self.board.own_pieces();
         let opponent = self.board.opponent_pieces();
 
@@ -941,5 +842,27 @@ impl<'a> MoveGenerator<'a> {
         bitboard |= bitboard.checked_shl(8_u32).unwrap_or(0);
         bitboard |= bitboard.checked_shr(8_u32).unwrap_or(0);
         bitboard
+    }
+
+    fn king_under_attack(&self, king_pos: Square) -> bool {
+        let own = self.board.own_pieces();
+        let opponent = self.board.opponent_pieces();
+
+        let occupied = own | opponent;
+
+        let mut king = 1 << king_pos;
+        let from = king.pop_lsb().expect("No king found");
+
+        (match self.board.turn {
+            Color::White => self.black_pawn_attacks(from) & self.board.pawns,
+            Color::Black => self.white_pawn_attacks(from) & self.board.pawns,
+            Color::None => unreachable!(),
+        } | (self.rook_attacks(from, occupied) & self.board.rooks)
+            | (self.knight_attacks(from) & self.board.knights)
+            | (self.bishop_attacks(from, occupied) & self.board.bishops)
+            | (self.queen_attacks(from, occupied) & self.board.queens)
+            | (self.king_attacks(from) & self.board.kings))
+            & opponent
+            > 0
     }
 }

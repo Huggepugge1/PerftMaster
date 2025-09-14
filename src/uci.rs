@@ -43,18 +43,18 @@ pub fn run() {
                     *stopper.write().expect("Failed to start the search") = Status::Go;
                     let mut board = board.clone();
                     let stopper = stopper.clone();
-                    thread::spawn(move || {
-                        println!(
-                            "{}",
-                            UciMessage::BestMove {
-                                best_move: Search::go(&mut board, time_control, stopper.clone())
-                                    .best_move
-                                    .as_ucimove(),
-                                ponder: None,
-                            }
-                        );
-                        *stopper.write().expect("Failed to start the search") = Status::Idle;
-                    });
+                    // thread::spawn(move || {
+                    println!(
+                        "{}",
+                        UciMessage::BestMove {
+                            best_move: Search::go(&mut board, time_control, stopper.clone())
+                                .best_move
+                                .as_ucimove(),
+                            ponder: None,
+                        }
+                    );
+                    *stopper.write().expect("Failed to start the search") = Status::Idle;
+                    // });
                 }
 
                 UciMessage::UciNewGame => board.new_game(),

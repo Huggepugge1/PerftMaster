@@ -56,3 +56,11 @@ Mostly better move generation
 #### At this point, random does not score a single draw
 perft-speed: ~30M nodes/s
 Elo: 61.4 +/- 27.4 (Against v5)
+
+## Version 0.7.0
+### Whats changed
+Better scores and TT
+
+### Performance
+perft-speed: ~30M nodes/s (unchanged)
+Elo: 229.8 +/- 63.5 (Against v6)

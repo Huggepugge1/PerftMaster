@@ -16,11 +16,11 @@ use crate::{
 
 impl Board {}
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 enum NodeKind {
-    PvNode,
-    CutNode,
-    AllNode,
+    Pv,
+    Cut,
+    All,
 }
 
 #[derive(Debug)]
@@ -33,7 +33,7 @@ struct TTNode {
 
 #[derive(Debug)]
 pub struct Search<'a> {
-    pub best_move: Move,
+    pub pv: Move,
     depth: u8,
     board: &'a mut Board,
 
@@ -109,7 +109,7 @@ impl PartialOrd for Score {
 
 impl std::ops::AddAssign for Score {
     fn add_assign(&mut self, rhs: Self) {
-        match (self.clone(), rhs) {
+        match (*self, rhs) {
             (Score::Stop, _) => (),
             (_, Score::Stop) => *self = Score::Stop,
 
@@ -201,7 +201,7 @@ impl Score {
 impl<'a> Search<'a> {
     fn new(stopper: Arc<RwLock<Status>>, board: &'a mut Board) -> Self {
         Self {
-            best_move: Move::default(),
+            pv: Move::default(),
             depth: 0,
             board,
 
@@ -268,7 +268,7 @@ impl<'a> Search<'a> {
                 search.score.centipawns(),
                 search.nodes,
                 (search.nodes as f64 / search.start.elapsed().as_secs_f64()) as u64,
-                search.best_move,
+                search.pv,
             );
             depth += 1;
         }
@@ -441,11 +441,7 @@ impl<'a> Search<'a> {
     }
 
     fn mvv_lva(&mut self, a: Move, b: Move) -> Ordering {
-        if a == self.best_move {
-            Ordering::Less
-        } else if b == self.best_move {
-            Ordering::Greater
-        } else if a.is_capture() && !b.is_capture() {
+        if a.is_capture() && !b.is_capture() {
             Ordering::Less
         } else if !a.is_capture() && b.is_capture() {
             Ordering::Greater
@@ -465,7 +461,7 @@ impl<'a> Search<'a> {
         }
     }
 
-    fn quiescence_search(&mut self, depth: u8, mut alpha: Score, beta: Score) -> Score {
+    fn quiescence_search(&mut self, mut alpha: Score, beta: Score) -> Score {
         self.nodes += 1;
         if *self.stopper.read().unwrap() == Status::Stopping {
             return Score::Stop;
@@ -485,11 +481,7 @@ impl<'a> Search<'a> {
         for m in moves {
             self.board.make_move(m);
 
-            let score = if depth == 0 {
-                self.eval()
-            } else {
-                -self.quiescence_search(depth - 1, -beta, -alpha).inc()
-            };
+            let score = -self.quiescence_search(-beta, -alpha).inc();
 
             self.board.unmake_move(m);
             if score > best {
@@ -511,31 +503,43 @@ impl<'a> Search<'a> {
         if *self.stopper.read().unwrap() == Status::Stopping {
             return Score::Stop;
         }
-        if let Some(tt_node) = self.tt.get(&self.board.zobrist_hash)
-            && tt_node.depth >= depth
-        {
-            self.tt_hits += 1;
-            match tt_node.kind {
-                NodeKind::PvNode => return tt_node.score,
-                NodeKind::CutNode => {
-                    if tt_node.score >= beta {
-                        return tt_node.score;
+        let mut tt_best_move = None;
+        if let Some(tt_node) = self.tt.get(&self.board.zobrist_hash) {
+            if tt_node.depth >= depth {
+                self.tt_hits += 1;
+                match tt_node.kind {
+                    NodeKind::Pv => return tt_node.score,
+                    NodeKind::Cut => {
+                        if tt_node.score >= beta {
+                            return tt_node.score;
+                        }
+                    }
+                    NodeKind::All => {
+                        if tt_node.score <= alpha {
+                            return tt_node.score;
+                        }
                     }
                 }
-                NodeKind::AllNode => {
-                    if tt_node.score <= alpha {
-                        return tt_node.score;
-                    }
-                }
+            } else if tt_node.kind == NodeKind::Pv || tt_node.kind == NodeKind::Cut {
+                tt_best_move = Some(tt_node.best_move);
             }
         }
         if depth == 0 {
-            return self.quiescence_search(8, alpha, beta);
+            return self.quiescence_search(alpha, beta);
         }
         let (mut best_score, mut best_move) = (Score::OppMate(0), Move::NULL);
         let mut moves = self.board.generate_moves();
         let in_check = moves.in_check;
-        moves.sort_by(|a, b| self.mvv_lva(*a, *b));
+        moves.sort_by(|a, b| {
+            if let Some(best_move) = tt_best_move {
+                if *a == best_move {
+                    return std::cmp::Ordering::Less;
+                } else if *b == best_move {
+                    return std::cmp::Ordering::Greater;
+                }
+            }
+            self.mvv_lva(*a, *b)
+        });
         for m in moves {
             self.board.make_move(m);
             let score = -self.negamax(depth - 1, -beta, -alpha).inc();
@@ -544,10 +548,10 @@ impl<'a> Search<'a> {
                 self.tt.insert(
                     self.board.zobrist_hash,
                     TTNode {
-                        best_move,
+                        best_move: m,
                         depth,
                         score,
-                        kind: NodeKind::CutNode,
+                        kind: NodeKind::Cut,
                     },
                 );
                 return score;
@@ -556,7 +560,7 @@ impl<'a> Search<'a> {
                 best_score = score;
                 best_move = m;
                 if depth == self.depth {
-                    self.best_move = m;
+                    self.pv = m;
                 }
                 if score > alpha {
                     alpha = score;
@@ -573,9 +577,9 @@ impl<'a> Search<'a> {
         }
 
         let node_kind = if best_score < alpha {
-            NodeKind::AllNode
+            NodeKind::All
         } else {
-            NodeKind::PvNode
+            NodeKind::Pv
         };
         self.tt.insert(
             self.board.zobrist_hash,

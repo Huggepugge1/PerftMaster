@@ -57,7 +57,7 @@ pub fn run() {
                                     time_control,
                                     stopper.clone()
                                 )
-                                .best_move
+                                .pv
                                 .as_ucimove(),
                                 ponder: None,
                             }

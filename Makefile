@@ -10,7 +10,7 @@ TC=inf/10+0.1
 
 ENGINE1=target/release/perftmaster
 
-ENGINE2=binaries/v6
+ENGINE2=binaries/v5
 
 SHARED_ENGINE_OPTIONS=proto=uci tc=$(TC)
 

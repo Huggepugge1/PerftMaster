@@ -200,7 +200,7 @@ fn stockfish_perft(depth: u8, fen: &str, moves: Vec<Move>, stockfish: &mut Child
 
     let string_perft = read_until(stockfish, "Nodes searched:")
         .split("\n")
-        .filter(|e| e != &"" && !e.starts_with(&"info"))
+        .filter(|e| e != &"" && !e.starts_with("info"))
         .map(String::from)
         .collect::<Vec<_>>();
 

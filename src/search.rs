@@ -53,6 +53,7 @@ pub struct Search<'a> {
 pub enum Score {
     OwnMate(usize),
     OppMate(usize),
+    #[allow(clippy::enum_variant_names)]
     Score(i64),
     Draw(usize),
 
@@ -172,8 +173,8 @@ impl Score {
             Score::OwnMate(ply) => format!("M+{ply}"),
             Score::OppMate(ply) => format!("M-{ply}"),
             Score::Score(score) => format!("{score}"),
-            Score::Draw(_) => format!("0"),
-            Score::Stop => format!("?"),
+            Score::Draw(_) => "0".to_string(),
+            Score::Stop => "?".to_string(),
         }
     }
 
@@ -274,7 +275,7 @@ impl<'a> Search<'a> {
         }
 
         let _ = sender.send(());
-        return search;
+        search
     }
 
     const WHITE_PAWN_SQUARE_TABLE: [i64; 64] = [
@@ -548,7 +549,7 @@ impl<'a> Search<'a> {
                 self.tt.insert(
                     self.board.zobrist_hash,
                     TTNode {
-                        best_move: m,
+                        best_move,
                         depth,
                         score,
                         kind: NodeKind::Cut,

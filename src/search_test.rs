@@ -109,7 +109,7 @@ fn stockfish_search_test(depth: u8, fen: &str, stockfish: &mut Child) {
 
     let string_infos = read_until(stockfish, "bestmove")
         .split("\n")
-        .filter(|e| e != &"" && e.contains(&"cp"))
+        .filter(|e| e != &"" && e.contains("cp"))
         .map(String::from)
         .collect::<Vec<_>>();
 

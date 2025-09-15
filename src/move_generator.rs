@@ -106,14 +106,14 @@ impl Dir {
                     max(files.abs(), 1)
                 };
             match square_dir {
-                8 => return Some(Dir::North),
-                9 => return Some(Dir::NorthEast),
-                7 => return Some(Dir::NorthWest),
-                1 => return Some(Dir::East),
-                -1 => return Some(Dir::West),
-                -8 => return Some(Dir::South),
-                -9 => return Some(Dir::SouthWest),
-                -7 => return Some(Dir::SouthEast),
+                8 => Some(Dir::North),
+                9 => Some(Dir::NorthEast),
+                7 => Some(Dir::NorthWest),
+                1 => Some(Dir::East),
+                -1 => Some(Dir::West),
+                -8 => Some(Dir::South),
+                -9 => Some(Dir::SouthWest),
+                -7 => Some(Dir::SouthEast),
                 _ => None,
             }
         } else {
@@ -298,9 +298,7 @@ impl MoveGeneratorResult {
         for i in 0..self.len {
             for j in i + 1..self.len {
                 if b(&self.moves[i], &self.moves[j]) == std::cmp::Ordering::Greater {
-                    let x = self.moves[i];
-                    self.moves[i] = self.moves[j];
-                    self.moves[j] = x;
+                    self.moves.swap(i, j);
                 }
             }
         }
@@ -323,7 +321,7 @@ impl Iterator for MoveGeneratorResult {
 impl<'a> MoveGenerator<'a> {
     fn generate_moves(board: &mut Board) -> MoveGeneratorResult {
         let mut move_generator = MoveGenerator {
-            board: board,
+            board,
 
             attacks: 0,
             checkers: 0,
@@ -464,7 +462,7 @@ impl<'a> MoveGenerator<'a> {
         let mut blockers = self.board.own_pieces();
         let attacks = attack_fn(self, from, occupied);
         blockers &= attacks;
-        return attacks ^ attack_fn(self, from, occupied ^ blockers);
+        attacks ^ attack_fn(self, from, occupied ^ blockers)
     }
 
     fn xray_dir(&mut self, from: Square, to: Square) -> Bitboard {
@@ -478,7 +476,7 @@ impl<'a> MoveGenerator<'a> {
         };
         let attacks = attack_fn(from, dir, occupied);
         blockers &= attacks;
-        return attack_fn(from, dir, occupied ^ blockers);
+        attack_fn(from, dir, occupied ^ blockers)
     }
 
     fn generate_pawn_moves(&mut self, moves: &mut MoveGeneratorResult) {
@@ -495,11 +493,11 @@ impl<'a> MoveGenerator<'a> {
         let free = !blockers;
         while let Some(from) = pawns.pop_lsb() {
             let mut bitboard = 0;
-            if 1 << from + 8 & self.block_ray & free > 0 {
-                bitboard |= 1 << from + 8;
+            if 1 << (from + 8) & self.block_ray & free > 0 {
+                bitboard |= 1 << (from + 8);
             }
-            if 1 << from + 7 & self.block_ray & self.board.black_pieces & NOT_H_FILE > 0 {
-                bitboard |= 1 << from + 7;
+            if 1 << (from + 7) & self.block_ray & self.board.black_pieces & NOT_H_FILE > 0 {
+                bitboard |= 1 << (from + 7);
             }
             if Bitboard::checked_shl(1, (from + 9) as u32).unwrap_or(0)
                 & self.block_ray
@@ -507,13 +505,13 @@ impl<'a> MoveGenerator<'a> {
                 & NOT_A_FILE
                 > 0
             {
-                bitboard |= 1 << from + 9;
+                bitboard |= 1 << (from + 9);
             }
             if from / 8 == 1
-                && (1 << from + 8 | 1 << from + 16) & blockers == 0
-                && self.block_ray & 1 << from + 16 > 0
+                && (1 << (from + 8) | 1 << (from + 16)) & blockers == 0
+                && self.block_ray & 1 << (from + 16) > 0
             {
-                bitboard |= 1 << from + 16;
+                bitboard |= 1 << (from + 16);
             }
             if self.board.ep != -1 {
                 self.white_pawn_en_passant(&mut bitboard, from);
@@ -535,7 +533,7 @@ impl<'a> MoveGenerator<'a> {
                     0
                 } | if to - from == 16 { 0b0001 } else { 0 }
                     | if to == self.board.ep { 0b0101 } else { 0 };
-                moves.append(&mut Move::add_promotion_if_possible(from, to, flags));
+                moves.append(&Move::add_promotion_if_possible(from, to, flags));
             }
         }
     }
@@ -544,34 +542,33 @@ impl<'a> MoveGenerator<'a> {
         let king_square = (self.board.kings & self.board.white_pieces)
             .pop_lsb()
             .expect("No king found");
-        if 1 << from + 7 & (self.block_ray | self.checkers << 8) & 1 << self.board.ep & NOT_H_FILE
+        if 1 << (from + 7) & (self.block_ray | self.checkers << 8) & 1 << self.board.ep & NOT_H_FILE
             > 0
         {
             if king_square / 8 == 4 {
                 let dir = Dir::from_squares(king_square, from).unwrap();
-                if dir.to_square() > 0
+                if (dir.to_square() > 0
                     && get_positive_ray_attacks(
                         king_square,
                         dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from - 1,
+                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << (from - 1),
                     ) & self.board.black_pieces
                         & (self.board.rooks | self.board.queens)
-                        == 0
+                        == 0)
+                    || (dir.to_square() < 0
+                        && get_negative_ray_attacks(
+                            king_square,
+                            dir,
+                            (self.board.white_pieces | self.board.black_pieces)
+                                ^ 0b11 << (from - 1),
+                        ) & self.board.black_pieces
+                            & (self.board.rooks | self.board.queens)
+                            == 0)
                 {
-                    *bitboard |= 1 << from + 7;
-                } else if dir.to_square() < 0
-                    && get_negative_ray_attacks(
-                        king_square,
-                        dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from - 1,
-                    ) & self.board.black_pieces
-                        & (self.board.rooks | self.board.queens)
-                        == 0
-                {
-                    *bitboard |= 1 << from + 7;
+                    *bitboard |= 1 << (from + 7);
                 }
             } else {
-                *bitboard |= 1 << from + 7;
+                *bitboard |= 1 << (from + 7);
             }
         }
         if Bitboard::checked_shl(1, (from + 9) as u32).unwrap_or(0)
@@ -582,29 +579,27 @@ impl<'a> MoveGenerator<'a> {
         {
             if king_square / 8 == 4 {
                 let dir = Dir::from_squares(king_square, from).unwrap();
-                if dir.to_square() > 0
+                if (dir.to_square() > 0
                     && get_positive_ray_attacks(
                         king_square,
                         dir,
                         (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from,
                     ) & self.board.black_pieces
                         & (self.board.queens | self.board.rooks)
-                        == 0
+                        == 0)
+                    || (dir.to_square() < 0
+                        && get_negative_ray_attacks(
+                            king_square,
+                            dir,
+                            (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from,
+                        ) & self.board.black_pieces
+                            & (self.board.queens | self.board.rooks)
+                            == 0)
                 {
-                    *bitboard |= 1 << from + 9;
-                } else if dir.to_square() < 0
-                    && get_negative_ray_attacks(
-                        king_square,
-                        dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from,
-                    ) & self.board.black_pieces
-                        & (self.board.queens | self.board.rooks)
-                        == 0
-                {
-                    *bitboard |= 1 << from + 9;
+                    *bitboard |= 1 << (from + 9);
                 }
             } else {
-                *bitboard |= 1 << from + 9;
+                *bitboard |= 1 << (from + 9);
             }
         }
     }
@@ -620,11 +615,11 @@ impl<'a> MoveGenerator<'a> {
         let free = !blockers;
         while let Some(from) = pawns.pop_lsb() {
             let mut bitboard = 0;
-            if 1 << from - 8 & self.block_ray & free > 0 {
-                bitboard |= 1 << from - 8;
+            if 1 << (from - 8) & self.block_ray & free > 0 {
+                bitboard |= 1 << (from - 8);
             }
-            if 1 << from - 7 & self.block_ray & self.board.white_pieces & NOT_A_FILE > 0 {
-                bitboard |= 1 << from - 7;
+            if 1 << (from - 7) & self.block_ray & self.board.white_pieces & NOT_A_FILE > 0 {
+                bitboard |= 1 << (from - 7);
             }
             if Bitboard::checked_shl(1, (from - 9) as u32).unwrap_or(0)
                 & self.block_ray
@@ -632,13 +627,13 @@ impl<'a> MoveGenerator<'a> {
                 & NOT_H_FILE
                 > 0
             {
-                bitboard |= 1 << from - 9;
+                bitboard |= 1 << (from - 9);
             }
             if from / 8 == 6
-                && (1 << from - 8 | 1 << from - 16) & blockers == 0
-                && self.block_ray & 1 << from - 16 > 0
+                && (1 << (from - 8) | 1 << (from - 16)) & blockers == 0
+                && self.block_ray & 1 << (from - 16) > 0
             {
-                bitboard |= 1 << from - 16;
+                bitboard |= 1 << (from - 16);
             }
             if self.board.ep != -1 {
                 self.black_pawn_en_passant(&mut bitboard, from);
@@ -660,7 +655,7 @@ impl<'a> MoveGenerator<'a> {
                     0
                 } | if to - from == -16 { 0b0001 } else { 0 }
                     | if to == self.board.ep { 0b0101 } else { 0 };
-                moves.append(&mut Move::add_promotion_if_possible(from, to, flags));
+                moves.append(&Move::add_promotion_if_possible(from, to, flags));
             }
         }
     }
@@ -669,34 +664,32 @@ impl<'a> MoveGenerator<'a> {
         let king_square = (self.board.kings & self.board.black_pieces)
             .pop_lsb()
             .expect("No king found");
-        if 1 << from - 7 & (self.block_ray | self.checkers >> 8) & 1 << self.board.ep & NOT_A_FILE
+        if 1 << (from - 7) & (self.block_ray | self.checkers >> 8) & 1 << self.board.ep & NOT_A_FILE
             > 0
         {
             if king_square / 8 == 3 {
                 let dir = Dir::from_squares(king_square, from).unwrap();
-                if dir.to_square() > 0
+                if (dir.to_square() > 0
                     && get_positive_ray_attacks(
                         king_square,
                         dir,
                         (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from,
                     ) & self.board.white_pieces
                         & (self.board.rooks | self.board.queens)
-                        == 0
+                        == 0)
+                    || (dir.to_square() < 0
+                        && get_negative_ray_attacks(
+                            king_square,
+                            dir,
+                            (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from,
+                        ) & self.board.white_pieces
+                            & (self.board.rooks | self.board.queens)
+                            == 0)
                 {
-                    *bitboard |= 1 << from - 7;
-                } else if dir.to_square() < 0
-                    && get_negative_ray_attacks(
-                        king_square,
-                        dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from,
-                    ) & self.board.white_pieces
-                        & (self.board.rooks | self.board.queens)
-                        == 0
-                {
-                    *bitboard |= 1 << from - 7;
+                    *bitboard |= 1 << (from - 7);
                 }
             } else {
-                *bitboard |= 1 << from - 7;
+                *bitboard |= 1 << (from - 7);
             }
         }
         if Bitboard::checked_shl(1, (from - 9) as u32).unwrap_or(0)
@@ -707,29 +700,28 @@ impl<'a> MoveGenerator<'a> {
         {
             if king_square / 8 == 3 {
                 let dir = Dir::from_squares(king_square, from).unwrap();
-                if dir.to_square() > 0
+                if (dir.to_square() > 0
                     && get_positive_ray_attacks(
                         king_square,
                         dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from - 1,
+                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << (from - 1),
                     ) & self.board.white_pieces
                         & (self.board.rooks | self.board.queens)
-                        == 0
+                        == 0)
+                    || (dir.to_square() < 0
+                        && get_negative_ray_attacks(
+                            king_square,
+                            dir,
+                            (self.board.white_pieces | self.board.black_pieces)
+                                ^ 0b11 << (from - 1),
+                        ) & self.board.white_pieces
+                            & (self.board.rooks | self.board.queens)
+                            == 0)
                 {
-                    *bitboard |= 1 << from - 9;
-                } else if dir.to_square() < 0
-                    && get_negative_ray_attacks(
-                        king_square,
-                        dir,
-                        (self.board.white_pieces | self.board.black_pieces) ^ 0b11 << from - 1,
-                    ) & self.board.white_pieces
-                        & (self.board.rooks | self.board.queens)
-                        == 0
-                {
-                    *bitboard |= 1 << from - 9;
+                    *bitboard |= 1 << (from - 9);
                 }
             } else {
-                *bitboard |= 1 << from - 9;
+                *bitboard |= 1 << (from - 9);
             }
         }
     }
@@ -892,7 +884,7 @@ impl<'a> MoveGenerator<'a> {
             if 1 << checker_square & self.board.pawns == 0
                 && let Some(dir) = Dir::from_squares(checker_square, from)
             {
-                bitboard &= !(1 << from + dir.to_square());
+                bitboard &= !(1 << (from + dir.to_square()));
             }
         }
 

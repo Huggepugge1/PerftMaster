@@ -16,14 +16,15 @@ use crate::{
 
 impl Board {}
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 enum NodeKind {
     Pv,
     Cut,
     All,
+    Stopped,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TTNode {
     best_move: Move,
     depth: u8,
@@ -32,10 +33,10 @@ struct TTNode {
 }
 
 #[derive(Debug)]
-pub struct Search<'a> {
+pub struct Search {
     pub pv: Move,
     depth: u8,
-    board: &'a mut Board,
+    board: Board,
 
     tt: HashMap<u64, TTNode>,
     tt_hits: usize,
@@ -108,48 +109,128 @@ impl PartialOrd for Score {
     }
 }
 
-impl std::ops::AddAssign for Score {
-    fn add_assign(&mut self, rhs: Self) {
-        match (*self, rhs) {
-            (Score::Stop, _) => (),
-            (_, Score::Stop) => *self = Score::Stop,
+impl std::ops::Add for Score {
+    type Output = Self;
 
-            (Score::OwnMate(ply1), Score::OwnMate(ply2)) => *self = Score::OwnMate(ply1.min(ply2)),
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Score::Stop, _) => Score::Stop,
+            (_, Score::Stop) => Score::Stop,
+
+            (Score::OwnMate(ply1), Score::OwnMate(ply2)) => Score::OwnMate(ply1.min(ply2)),
             (Score::OwnMate(ply1), Score::OppMate(ply2)) => {
-                *self = if ply1 < ply2 {
-                    Score::OwnMate(ply1)
+                if ply1 < ply2 {
+                    self
                 } else {
-                    Score::OppMate(ply2)
+                    rhs
                 }
             }
-            (Score::OwnMate(_), _) => (),
+            (Score::OwnMate(_), _) => self,
 
-            (Score::OppMate(ply1), Score::OppMate(ply2)) => *self = Score::OppMate(ply1.min(ply2)),
+            (Score::OppMate(ply1), Score::OppMate(ply2)) => Score::OppMate(ply1.min(ply2)),
             (Score::OppMate(ply1), Score::OwnMate(ply2)) => {
-                *self = if ply1 < ply2 {
-                    Score::OppMate(ply1)
+                if ply1 < ply2 {
+                    self
                 } else {
-                    Score::OwnMate(ply2)
+                    rhs
                 }
             }
             (Score::OppMate(ply1), Score::Draw(ply2)) => {
-                *self = if ply1 < ply2 {
-                    Score::OppMate(ply1)
+                if ply1 < ply2 {
+                    self
                 } else {
-                    Score::Draw(ply2)
+                    rhs
                 }
             }
-            (Score::OppMate(_), _) => (),
+            (Score::OppMate(_), _) => self,
 
-            (_, Score::OwnMate(ply)) => *self = Score::OwnMate(ply),
-            (_, Score::OppMate(ply)) => *self = Score::OppMate(ply),
+            (_, Score::OwnMate(_)) => rhs,
+            (_, Score::OppMate(_)) => rhs,
 
-            (Score::Score(score1), Score::Score(score2)) => *self = Score::Score(score1 + score2),
+            (Score::Score(score1), Score::Score(score2)) => Score::Score(score1 + score2),
 
-            (Score::Score(_), Score::Draw(ply)) => *self = Score::Draw(ply),
-            (Score::Draw(_), Score::Score(_)) => (),
-            (Score::Draw(ply1), Score::Draw(ply2)) => *self = Score::Draw(ply1.min(ply2)),
+            (Score::Score(_), Score::Draw(_)) => rhs,
+            (Score::Draw(_), Score::Score(_)) => self,
+            (Score::Draw(ply1), Score::Draw(ply2)) => Score::Draw(ply1.min(ply2)),
         }
+    }
+}
+
+impl std::ops::AddAssign for Score {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+impl std::ops::Sub for Score {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Score::Stop, _) => Score::Stop,
+            (_, Score::Stop) => Score::Stop,
+
+            (Score::OwnMate(ply1), Score::OwnMate(ply2)) => Score::OwnMate(ply1.min(ply2)),
+            (Score::OwnMate(ply1), Score::OppMate(ply2)) => {
+                if ply1 < ply2 {
+                    self
+                } else {
+                    rhs
+                }
+            }
+            (Score::OwnMate(_), _) => self,
+
+            (Score::OppMate(ply1), Score::OppMate(ply2)) => Score::OppMate(ply1.min(ply2)),
+            (Score::OppMate(ply1), Score::OwnMate(ply2)) => {
+                if ply1 < ply2 {
+                    self
+                } else {
+                    rhs
+                }
+            }
+            (Score::OppMate(ply1), Score::Draw(ply2)) => {
+                if ply1 < ply2 {
+                    self
+                } else {
+                    rhs
+                }
+            }
+            (Score::OppMate(_), _) => self,
+
+            (_, Score::OwnMate(_)) => rhs,
+            (_, Score::OppMate(_)) => rhs,
+
+            (Score::Score(score1), Score::Score(score2)) => Score::Score(score1 - score2),
+
+            (Score::Score(_), Score::Draw(_)) => rhs,
+            (Score::Draw(_), Score::Score(_)) => self,
+            (Score::Draw(ply1), Score::Draw(ply2)) => Score::Draw(ply1.min(ply2)),
+        }
+    }
+}
+
+impl std::ops::Mul<i64> for Score {
+    type Output = Self;
+
+    fn mul(self, rhs: i64) -> Self::Output {
+        match self {
+            Score::Score(score) => {
+                if score * rhs > 10000 {
+                    Score::OwnMate(0)
+                } else if score * rhs < -10000 {
+                    Score::OppMate(0)
+                } else {
+                    Score::Score(score * rhs)
+                }
+            }
+            _ => self,
+        }
+    }
+}
+
+impl std::ops::MulAssign<i64> for Score {
+    fn mul_assign(&mut self, rhs: i64) {
+        *self = *self * rhs;
     }
 }
 
@@ -199,8 +280,8 @@ impl Score {
     }
 }
 
-impl<'a> Search<'a> {
-    fn new(stopper: Arc<RwLock<Status>>, board: &'a mut Board) -> Self {
+impl Search {
+    fn new(stopper: Arc<RwLock<Status>>, board: Board) -> Self {
         Self {
             pv: Move::default(),
             depth: 0,
@@ -220,13 +301,14 @@ impl<'a> Search<'a> {
     }
 
     pub fn go(
-        board: &'a mut Board,
+        board: Board,
         search_control: Option<UciSearchControl>,
         time_control: Option<UciTimeControl>,
         stopper: Arc<RwLock<Status>>,
-    ) -> Search<'a> {
+    ) -> Search {
         let (sender, receiver) = channel();
-        let (alpha, beta) = (Score::OppMate(0), Score::OwnMate(0));
+        let (mut alpha, mut beta) = (Score::OppMate(0), Score::OwnMate(0));
+        let mut search_copy: Search = Self::new(stopper.clone(), board.clone());
         let mut search = Self::new(stopper.clone(), board);
         if let Some(time_control) = time_control {
             let move_time = match time_control {
@@ -262,7 +344,40 @@ impl<'a> Search<'a> {
         let mut depth = 1;
         while *search.stopper.read().unwrap() != Status::Stopping && depth <= max_depth {
             search.depth = depth;
-            search.score = search.negamax(search.depth, alpha, beta);
+            let mut window = (Score::Score(50), Score::Score(50));
+            let mut score;
+            let mut node_kind;
+            loop {
+                if depth != 1 {
+                    alpha = search.score - window.0;
+                    beta = search.score + window.1;
+                }
+
+                (score, node_kind) = search.negamax(search.depth, alpha, beta);
+                eprintln!(
+                    "{depth}: {}({}) <= {score} <= {}({}) {node_kind:?}",
+                    alpha, window.0, beta, window.1
+                );
+
+                eprintln!(
+                    "{depth}: {}({}) <= {} <= {}({}) {node_kind:?}",
+                    alpha,
+                    window.0,
+                    search_copy
+                        .negamax(search.depth, Score::OppMate(0), Score::OwnMate(0))
+                        .0,
+                    beta,
+                    window.1
+                );
+
+                match node_kind {
+                    NodeKind::Cut => window.1 *= 4,
+                    NodeKind::All => window.0 *= 4,
+                    NodeKind::Pv => break,
+                    NodeKind::Stopped => break,
+                }
+            }
+            search.score = score;
             println!(
                 "info depth {} score cp {} nodes {} nps {} pv {}",
                 search.depth,
@@ -275,6 +390,7 @@ impl<'a> Search<'a> {
         }
 
         let _ = sender.send(());
+        drop(search_copy);
         search
     }
 
@@ -499,34 +615,35 @@ impl<'a> Search<'a> {
         best
     }
 
-    fn negamax(&mut self, depth: u8, mut alpha: Score, beta: Score) -> Score {
+    fn negamax(&mut self, depth: u8, mut alpha: Score, beta: Score) -> (Score, NodeKind) {
         self.nodes += 1;
         if *self.stopper.read().unwrap() == Status::Stopping {
-            return Score::Stop;
+            return (Score::Stop, NodeKind::Stopped);
         }
         let mut tt_best_move = None;
         if let Some(tt_node) = self.tt.get(&self.board.zobrist_hash) {
             if tt_node.depth >= depth {
                 self.tt_hits += 1;
                 match tt_node.kind {
-                    NodeKind::Pv => return tt_node.score,
+                    NodeKind::Pv => return (tt_node.score, tt_node.kind),
                     NodeKind::Cut => {
                         if tt_node.score >= beta {
-                            return tt_node.score;
+                            return (tt_node.score, tt_node.kind);
                         }
                     }
                     NodeKind::All => {
                         if tt_node.score <= alpha {
-                            return tt_node.score;
+                            return (tt_node.score, tt_node.kind);
                         }
                     }
+                    _ => unreachable!(),
                 }
             } else if tt_node.kind == NodeKind::Pv || tt_node.kind == NodeKind::Cut {
                 tt_best_move = Some(tt_node.best_move);
             }
         }
         if depth == 0 {
-            return self.quiescence_search(alpha, beta);
+            return (self.quiescence_search(alpha, beta), NodeKind::Pv);
         }
         let (mut best_score, mut best_move) = (Score::OppMate(0), Move::NULL);
         let mut moves = self.board.generate_moves();
@@ -543,7 +660,7 @@ impl<'a> Search<'a> {
         });
         for m in moves {
             self.board.make_move(m);
-            let score = -self.negamax(depth - 1, -beta, -alpha).inc();
+            let score = -self.negamax(depth - 1, -beta, -alpha).0.inc();
             self.board.unmake_move(m);
             if score >= beta {
                 self.tt.insert(
@@ -555,15 +672,15 @@ impl<'a> Search<'a> {
                         kind: NodeKind::Cut,
                     },
                 );
-                return score;
+                return (score, NodeKind::Cut);
             }
             if score > best_score {
                 best_score = score;
                 best_move = m;
-                if depth == self.depth {
-                    self.pv = m;
-                }
                 if score > alpha {
+                    if depth == self.depth {
+                        self.pv = m;
+                    }
                     alpha = score;
                 }
             }
@@ -591,6 +708,6 @@ impl<'a> Search<'a> {
                 kind: node_kind,
             },
         );
-        best_score
+        (best_score, node_kind)
     }
 }

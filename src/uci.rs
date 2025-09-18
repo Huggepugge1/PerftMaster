@@ -45,14 +45,14 @@ pub fn run() {
                     ..
                 } => {
                     *stopper.write().expect("Failed to start the search") = Status::Go;
-                    let mut board = board.clone();
+                    let board = board.clone();
                     let stopper = stopper.clone();
                     thread::spawn(move || {
                         println!(
                             "{}",
                             UciMessage::BestMove {
                                 best_move: Search::go(
-                                    &mut board,
+                                    board,
                                     search_control,
                                     time_control,
                                     stopper.clone()

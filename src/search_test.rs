@@ -127,10 +127,10 @@ fn quit_stockfish(stockfish: &mut Child) {
 }
 
 impl Board {
-    fn search_test(&'_ mut self, depth: u8) -> Search<'_> {
+    fn search_test(&'_ mut self, depth: u8) -> Search {
         println!("Me");
         Search::go(
-            self,
+            self.clone(),
             Some(UciSearchControl {
                 search_moves: Vec::new(),
                 mate: None,

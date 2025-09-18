@@ -10,11 +10,11 @@ TC=inf/10+0.1
 
 ENGINE1=target/release/perftmaster
 
-ENGINE2=binaries/v5
+ENGINE2=binaries/v7
 
 SHARED_ENGINE_OPTIONS=proto=uci tc=$(TC)
 
-THREADS=16
+THREADS=1
 
 PGN_TIMELEFT=true
 
